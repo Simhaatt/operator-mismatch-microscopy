@@ -109,6 +109,11 @@ def main() -> None:
     ap.add_argument("--kernel", type=int, default=63)
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--out", default=None, help="write a JSON record here")
+    ap.add_argument("--n-iter", type=int, default=None,
+                    help="force the RL iteration count instead of selecting it")
+    ap.add_argument("--n-iter-grid", type=int, nargs="+",
+                    default=[5, 10, 20, 30, 50, 75, 100, 150],
+                    help="candidate iteration counts for the selection pass")
     args = ap.parse_args()
 
     dtype, dev = torch.float32, torch.device(args.device)
@@ -131,19 +136,27 @@ def main() -> None:
 
     # --- select n_iter once, on the nominal operator -------------------------
     y0 = simulate_measurement(x, psf0, noise, seed=sample_seed("gate1", "nominal"))
-    print("selecting Richardson-Lucy n_iter on the NOMINAL operator:")
-    best, best_ssim = 1, -1.0
-    for n in (5, 10, 20, 30, 50, 75, 100, 150):
-        s = float(ssim(scale_match(reconstruct(y0, psf0, n, noise), x), x,
-                       data_range=1.0).mean())
-        flag = ""
-        if s > best_ssim:
-            best, best_ssim, flag = n, s, "   <- best"
-        print(f"    n_iter={n:4d}   mean SSIM = {s:.4f}{flag}")
-    n_iter = best
+    if args.n_iter is not None:
+        n_iter = args.n_iter
+        print(f"Richardson-Lucy n_iter forced to {n_iter} (no selection pass)")
+    else:
+        print("selecting Richardson-Lucy n_iter on the NOMINAL operator:")
+        best, best_ssim = args.n_iter_grid[0], -1.0
+        for n in args.n_iter_grid:
+            sc = float(ssim(scale_match(reconstruct(y0, psf0, n, noise), x), x,
+                            data_range=1.0).mean())
+            flag = ""
+            if sc > best_ssim:
+                best, best_ssim, flag = n, sc, "   <- best"
+            print(f"    n_iter={n:5d}   mean SSIM = {sc:.4f}{flag}")
+        n_iter = best
+        if n_iter == max(args.n_iter_grid):
+            print("    WARNING: the selection picked the largest candidate, so the")
+            print("    reconstruction may be under-converged. Widen --n-iter-grid.")
+        print(f"  chosen n_iter = {n_iter}, held fixed across every shift cell")
     blurred = float(ssim(scale_match(apply_psf(x, psf0), x), x, data_range=1.0).mean())
-    print(f"  chosen n_iter = {n_iter}, held fixed across every shift cell")
-    print(f"  reference: mean SSIM of the blurred measurement itself = {blurred:.4f}\n")
+    print(f"  reference: mean SSIM of the blurred measurement itself = {blurred:.4f}")
+    print()
 
     # --- sweep the aberration ladder ----------------------------------------
     specs = ladder_specs(

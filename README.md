@@ -92,11 +92,55 @@ The *mechanism* is stronger than the correlation:
 * Observed residual, worst operator: **0.0938**
 * The entire operator-mismatch signal is **7.7% of the noise floor.**
 
-So the measurement residual is not merely weakly informative: the model-error
-projection into the measurement domain falls *below the photon noise floor*.
-This is the quantitative form of Bhadra et al.'s null-space argument, and it
-predicts the residual should become informative only at high photon counts --
-tested across BioSR's real 15-600 photon range in `experiments/gate1/`.
+So the measurement residual is not merely weakly informative: at BioSR's mid
+photon levels the model-error projection into the measurement domain falls
+*below the photon noise floor*. That is the quantitative form of Bhadra et al.'s
+null-space argument.
+
+### Photon sweep: the mechanism is real but incomplete
+
+The noise-floor explanation makes a falsifiable prediction -- raise the photon
+budget, the floor drops as 1/sqrt(N), and the residual must become informative.
+Swept over BioSR's real 15-600 range plus one probe beyond it (50 objects per
+level, `experiments/gate1/`):
+
+| photons | RL iters | noise floor | signal/floor | d(error) | d(residual) | ratio |
+|---|---|---|---|---|---|---|
+| 15   | 30  | 0.2058 | 0.0015 | 2.47 | 0.01 | 176x |
+| 50   | 50  | 0.1164 | 0.0557 | 2.83 | 0.08 | 34x |
+| 100  | 100 | 0.0826 | 0.0849 | 3.04 | 0.14 | 21x |
+| 300  | 150 | 0.0478 | 0.1033 | 3.11 | 0.24 | 13x |
+| 600  | 150 | 0.0338 | 0.0982 | 3.09 | 0.27 | 12x |
+| 3000 | 150 | 0.0151 | 0.0923 | 3.07 | 0.24 | 13x |
+
+**Confirmed:** the absolute error increase from severe aberration is essentially
+constant across the whole range (+0.208, +0.224, +0.231, +0.234, +0.233, +0.233).
+The aberration adds a fixed amount of structural error; the error *ratio* is
+compressed at low photon counts only because shot noise inflates the baseline.
+This is why Gate 1 tests effect size rather than a ratio.
+
+**Partly refuted:** the residual does become more informative as the floor drops
+(d(residual) 0.01 -> 0.27 from 15 to 600 photons), so shot noise is genuinely
+*a* mechanism -- but it then **saturates**. Even at a 13.6x lower noise floor,
+d(residual) never exceeds ~0.3 while d(error) sits at ~3.1. Shot noise alone
+therefore does **not** explain the blindness; a second, noise-independent
+component is present.
+
+**Known confound, under test:** `n_iter` hit the selection grid's ceiling of 150
+at 300 photons and above, with SSIM still rising monotonically at that cap, so
+those reconstructions are under-converged. The saturation of signal/floor
+coincides exactly with `n_iter` saturating, so two explanations are currently
+entangled: under-convergence, versus the reconstructor *fitting the residual
+away* (Richardson-Lucy explicitly minimises `||H_0 x_hat - y||`, so the residual
+may report how well the algorithm fit the data under its assumed operator rather
+than whether the answer is right). They predict opposite trends in d(residual)
+versus `n_iter`; `experiments/convergence/` tests which holds.
+
+**Side finding:** coma is the most residual-visible aberration
+(d(residual) 0.53 at 3000 photons, against 0.02-0.30 for the others) and is the
+single cell that fails Gate 1 there. It is the only *asymmetric* mode of the
+four, so it leaves a measurement-domain signature the residual can partly see.
+Symmetric aberrations stay near-invisible.
 
 ## Layout
 
