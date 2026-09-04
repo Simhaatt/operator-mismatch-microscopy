@@ -1,0 +1,21 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ipynb_checkpoints/
+*.egg-info/
+.venv/
+venv/
+
+# Data and outputs are reproducible from configs + seeds; never commit them.
+data/*
+!data/README.md
+experiments/*
+!experiments/.gitkeep
+figures/*
+!figures/.gitkeep
+*.tif
+*.tiff
+*.npy
+*.npz
+*.pt
+*.ckpt
