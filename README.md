@@ -126,15 +126,42 @@ d(residual) never exceeds ~0.3 while d(error) sits at ~3.1. Shot noise alone
 therefore does **not** explain the blindness; a second, noise-independent
 component is present.
 
-**Known confound, under test:** `n_iter` hit the selection grid's ceiling of 150
-at 300 photons and above, with SSIM still rising monotonically at that cap, so
-those reconstructions are under-converged. The saturation of signal/floor
-coincides exactly with `n_iter` saturating, so two explanations are currently
-entangled: under-convergence, versus the reconstructor *fitting the residual
-away* (Richardson-Lucy explicitly minimises `||H_0 x_hat - y||`, so the residual
-may report how well the algorithm fit the data under its assumed operator rather
-than whether the answer is right). They predict opposite trends in d(residual)
-versus `n_iter`; `experiments/convergence/` tests which holds.
+**Confound resolved -- and the mechanism is stronger than expected.** `n_iter`
+hit the selection grid's ceiling of 150 at 300 photons and above, so those
+reconstructions were under-converged and the saturation coincided exactly with
+that cap. Forcing the iteration count at 3000 photons settles it
+(`experiments/convergence/`):
+
+| n_iter | err(nom) | resid(nom) | resid / noise floor | d(error) | d(residual) | ratio |
+|---|---|---|---|---|---|---|
+| 50   | 0.1905 | 0.0190 | 1.284 | 2.15 | 0.70 | 3.1x |
+| 150  | 0.1603 | 0.0159 | 1.074 | 2.46 | 0.23 | 10.9x |
+| 400  | 0.1448 | 0.0152 | 1.027 | 2.67 | 0.38 | 7.1x |
+| 1000 | 0.1374 | 0.0150 | **1.014** | 2.83 | 0.40 | 7.1x |
+
+Under-convergence does **not** explain the blindness: at `n_iter = 1000`, where
+the reconstruction is well converged, d(residual) is still only 0.40 against
+d(error) 2.83.
+
+The decisive quantity is the last column of the third block: **Richardson-Lucy
+drives its own residual asymptotically onto the shot-noise floor**, reaching
+1.014x it. That is structural rather than incidental -- RL's update *is* a
+data-fidelity minimisation, so it reduces `||H_0 x_hat - y||` toward the noise
+floor whether or not `H_0` is the right operator, absorbing the operator error
+into `x_hat` where it lands in the null space and becomes invisible.
+
+So the residual is **doubly blind**: bounded below by shot noise, and actively
+driven onto that bound by the reconstructor's own objective. This argument
+extends to any method with an explicit data-fidelity term -- Richardson-Lucy,
+Poisson-TV, and unrolled networks with data consistency -- which covers three of
+the four planned reconstructors. Whether a purely learned reconstructor (a U-Net
+with no explicit fidelity term) behaves the same way is **untested and worth
+checking**, since it is the one case where the residual might retain signal.
+
+Caveat: d(residual) is non-monotone in `n_iter` (0.70, 0.23, 0.38, 0.40). With 20
+objects those estimates are noisy; a 50-object confirmation is in
+`experiments/convergence/n50_*`. The `resid / floor` trend and the size of the
+d(error) : d(residual) gap are stable regardless.
 
 **Side finding:** coma is the most residual-visible aberration
 (d(residual) 0.53 at 3000 photons, against 0.02-0.30 for the others) and is the
