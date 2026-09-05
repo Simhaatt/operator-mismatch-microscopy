@@ -116,9 +116,10 @@ def test_unet_shape_nonnegativity_and_divisibility_guard() -> None:
     y = torch.rand(2, 32, 32)
     yn, scale = normalise_measurement(y)
     assert torch.allclose(yn.mean(dim=(-2, -1)), torch.ones(2), atol=1e-5)
-    out = net(yn) * scale
-    assert out.shape == y.shape
-    assert float(out.min()) >= 0.0
+    with torch.no_grad():  # float() on a grad-tracking tensor raises under our
+        out = net(yn) * scale  # filterwarnings = error::UserWarning
+        assert out.shape == y.shape
+        assert float(out.min()) >= 0.0
     with pytest.raises(ValueError, match="divisible"):
         net(torch.rand(1, 30, 30))
 
@@ -138,11 +139,12 @@ def test_unrolled_takes_the_operator_as_an_argument(setup) -> None:
     net = UnrolledNet(n_stages=3, width=8, n_layers=3)
     shifted = pupil_psf({NAMED_MODES["spherical"]: 0.14}, PupilConfig(n_out=63),
                         warn=False)[0].float()
-    a = net(y[None], psf)
-    b = net(y[None], shifted)
-    assert a.shape == y[None].shape
-    assert float(a.min()) >= 0.0
-    assert float((a - b).abs().mean()) > 1e-6, "output ignores the operator"
+    with torch.no_grad():
+        a = net(y[None], psf)
+        b = net(y[None], shifted)
+        assert a.shape == y[None].shape
+        assert float(a.min()) >= 0.0
+        assert float((a - b).abs().mean()) > 1e-6, "output ignores the operator"
 
 
 def test_unrolled_gradients_flow_through_physics_and_denoiser(setup) -> None:
