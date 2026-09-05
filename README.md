@@ -158,10 +158,26 @@ the four planned reconstructors. Whether a purely learned reconstructor (a U-Net
 with no explicit fidelity term) behaves the same way is **untested and worth
 checking**, since it is the one case where the residual might retain signal.
 
-Caveat: d(residual) is non-monotone in `n_iter` (0.70, 0.23, 0.38, 0.40). With 20
-objects those estimates are noisy; a 50-object confirmation is in
-`experiments/convergence/n50_*`. The `resid / floor` trend and the size of the
-d(error) : d(residual) gap are stable regardless.
+Confirmed at 50 objects (`experiments/convergence/n50_*`), which also sharpens
+the endpoint:
+
+| n_iter | err(nom) | resid / noise floor | d(error) | d(residual) | ratio |
+|---|---|---|---|---|---|
+| 50   | 0.1826 | 1.282 | 2.71 | 0.68 | 4.0x |
+| 1000 | 0.1293 | **0.994** | 3.38 | 0.49 | 7.0x |
+
+At 1000 iterations the residual reaches **0.994x** the predicted shot-noise
+floor -- marginally *below* it, because unregularised Richardson-Lucy begins
+fitting the particular noise realisation as well. That is the cleanest statement
+of the point: the residual is a measure of how well the algorithm fit the data,
+not of whether the answer is right, and a data-fidelity iteration will drive it
+to the floor and through it regardless of whether the operator is correct.
+
+The d(error) : d(residual) ratio is stable at ~7x between the 20- and 50-object
+runs at 3000 photons, and is 11-29x at BioSR's real photon levels. The earlier
+non-monotonicity of d(residual) in `n_iter` (0.70, 0.23, 0.38, 0.40 at 20
+objects) was small-sample noise; the ratio and the `resid / floor` trend are the
+stable quantities.
 
 **Side finding:** coma is the most residual-visible aberration
 (d(residual) 0.53 at 3000 photons, against 0.02-0.30 for the others) and is the
