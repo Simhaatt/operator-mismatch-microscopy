@@ -27,7 +27,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.data.biosr import index_biosr, load_object, split_by_cell  # noqa: E402
+from src.data.biosr import index_biosr, index_npz, load_object, split_by_cell  # noqa: E402
 from src.metrics.image import scale_match, ssim  # noqa: E402
 from src.optics.aberrations import ABERRATION_MODES, ladder_specs  # noqa: E402
 from src.optics.forward_model import (  # noqa: E402
@@ -35,6 +35,7 @@ from src.optics.forward_model import (  # noqa: E402
 )
 from src.optics.psf import PupilConfig, pupil_psf  # noqa: E402
 from src.reconstruction.rl import richardson_lucy  # noqa: E402
+from src.reconstruction.tv import poisson_tv  # noqa: E402
 from src.reliability.features import FEATURE_NAMES, oscr_features  # noqa: E402
 
 
@@ -54,6 +55,14 @@ def main() -> None:
     ap.add_argument("--kernel", type=int, default=191)
     ap.add_argument("--held-out", default="CCPs")
     ap.add_argument("--device", default="cpu")
+    ap.add_argument("--source", default=None,
+                    help="compact .npz export; defaults to the zip archives")
+    ap.add_argument("--reconstructor", choices=("rl", "tv"), default="rl")
+    ap.add_argument("--tv-weight", type=float, default=None,
+                    help="TV regularisation strength; selected on the nominal "
+                         "operator if omitted, then held fixed across all cells")
+    ap.add_argument("--tv-iter", type=int, default=100)
+    ap.add_argument("--tv-prox-iter", type=int, default=10)
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
@@ -71,10 +80,44 @@ def main() -> None:
         for s in specs
     ]
 
-    idx = index_biosr()
+    idx = index_npz(args.source) if args.source else index_biosr()
     sp = split_by_cell(idx, held_out_structure=args.held_out)
     print(f"photons={args.photons} crop={args.crop} n_iter={args.n_iter} "
           f"probes={len(probes)} specs={len(specs)}")
+
+    if args.reconstructor == "tv":
+        weight = args.tv_weight
+        if weight is None:
+            # Select once on the NOMINAL operator, exactly as n_iter is chosen for
+            # Richardson-Lucy. Retuning per cell would confound operator mismatch
+            # with regularisation strength.
+            print("  selecting TV weight on the nominal operator...")
+            probe = [load_object(e, crop=args.crop, dtype=dtype).to(device)
+                     for e in sp["train"][:8]]
+            best, best_s = None, -1.0
+            for w in (0.001, 0.005, 0.02, 0.05):
+                tot = 0.0
+                for x in probe:
+                    y = simulate_measurement(x, psf0, noise, seed=sample_seed("wsel", w))
+                    xh = poisson_tv(y[None], psf0, args.tv_iter, weight=w,
+                                    background=noise.background,
+                                    prox_iter=args.tv_prox_iter)
+                    tot += float(ssim(scale_match(xh[0], x), x, data_range=1.0))
+                sc = tot / len(probe)
+                flag = ""
+                if sc > best_s:
+                    best, best_s, flag = w, sc, "   <- best"
+                print(f"    weight={w:6.3f}  mean SSIM={sc:.4f}{flag}")
+            weight = best
+        print(f"  TV weight = {weight}, {args.tv_iter} iterations, held fixed")
+
+        def reconstruct(y):
+            return poisson_tv(y, psf0, args.tv_iter, weight=weight,
+                              background=noise.background, prox_iter=args.tv_prox_iter)
+    else:
+        def reconstruct(y):
+            return richardson_lucy(y, psf0, args.n_iter, background=noise.background,
+                                   read_variance=noise.read_noise_e**2)
 
     store: dict[str, np.ndarray] = {}
     for split, entries in sp.items():
@@ -85,10 +128,7 @@ def main() -> None:
                 y = simulate_measurement(
                     x[0], psf_true, noise, seed=sample_seed(split, entry.key, spec.label)
                 )[None]
-                x_hat = richardson_lucy(
-                    y, psf0, args.n_iter, background=noise.background,
-                    read_variance=noise.read_noise_e**2,
-                )
+                x_hat = reconstruct(y)
                 X.append(oscr_features(y, x_hat, psf0, probes)[0].cpu().numpy())
                 e.append(float(1.0 - ssim(scale_match(x_hat[0], x[0]), x[0], data_range=1.0)))
                 sev.append(spec.severity)
@@ -109,6 +149,7 @@ def main() -> None:
 
     store["feature_names"] = np.asarray(FEATURE_NAMES)
     store["photons"] = np.asarray([args.photons])
+    store["reconstructor"] = np.asarray([args.reconstructor])
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(args.out, **store)
     print(f"wrote {args.out}")

@@ -104,3 +104,63 @@ def test_stronger_tv_weight_gives_smoother_estimate(setup) -> None:
     low = poisson_tv(y[None], psf, 60, weight=0.005, background=noise.background)
     high = poisson_tv(y[None], psf, 60, weight=0.2, background=noise.background)
     assert roughness(high) < roughness(low)
+
+
+# ------------------------------------------------------- learned reconstructors
+
+
+def test_unet_shape_nonnegativity_and_divisibility_guard() -> None:
+    from src.reconstruction.unet import UNet, normalise_measurement
+
+    net = UNet(base=8, depth=3)
+    y = torch.rand(2, 32, 32)
+    yn, scale = normalise_measurement(y)
+    assert torch.allclose(yn.mean(dim=(-2, -1)), torch.ones(2), atol=1e-5)
+    out = net(yn) * scale
+    assert out.shape == y.shape
+    assert float(out.min()) >= 0.0
+    with pytest.raises(ValueError, match="divisible"):
+        net(torch.rand(1, 30, 30))
+
+
+def test_unrolled_takes_the_operator_as_an_argument(setup) -> None:
+    """The PSF must be an argument, not baked in.
+
+    The whole experiment consists of evaluating a network under an operator that
+    differs from the one it was trained with, so a model storing its PSF could
+    not be tested for operator shift at all.
+    """
+    from src.optics.psf import PupilConfig, pupil_psf
+    from src.optics.zernike import NAMED_MODES
+    from src.reconstruction.unrolled import UnrolledNet
+
+    psf, _, y, _ = setup
+    net = UnrolledNet(n_stages=3, width=8, n_layers=3)
+    shifted = pupil_psf({NAMED_MODES["spherical"]: 0.14}, PupilConfig(n_out=63),
+                        warn=False)[0].float()
+    a = net(y[None], psf)
+    b = net(y[None], shifted)
+    assert a.shape == y[None].shape
+    assert float(a.min()) >= 0.0
+    assert float((a - b).abs().mean()) > 1e-6, "output ignores the operator"
+
+
+def test_unrolled_gradients_flow_through_physics_and_denoiser(setup) -> None:
+    from src.reconstruction.unrolled import UnrolledNet
+
+    psf, _, y, _ = setup
+    net = UnrolledNet(n_stages=3, width=8, n_layers=3)
+    net(y[None], psf).mean().backward()
+    assert net.log_step.grad is not None
+    assert bool(torch.isfinite(net.log_step.grad).all())
+    assert net.denoiser.net[0].weight.grad is not None
+
+
+def test_learned_reconstructors_are_deterministic_in_eval() -> None:
+    from src.reconstruction.unet import UNet
+
+    torch.manual_seed(0)
+    net = UNet(base=8, depth=2).eval()
+    y = torch.rand(2, 32, 32)
+    with torch.no_grad():
+        assert torch.equal(net(y), net(y))
