@@ -130,7 +130,11 @@ def main() -> None:
     ap.add_argument("--photons", type=float, default=100.0)
     ap.add_argument("--background", type=float, default=5.0)
     ap.add_argument("--read-noise", type=float, default=1.5)
-    ap.add_argument("--kernel", type=int, default=63)
+    ap.add_argument("--kernel", type=int, default=191,
+                    help="PSF kernel size. At the verified 31.3 nm sampling, 63 px "
+                         "discards 13 more points of energy at extreme aberration "
+                         "than at nominal, which fabricates a residual/severity "
+                         "correlation; 191 px keeps the spread under 0.6 points.")
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--out", default=None, help="write a JSON record here")
     ap.add_argument("--chunk", type=int, default=16,
@@ -197,14 +201,39 @@ def main() -> None:
           "(the reconstructor always assumes H_0):\n")
     print("  cell                     rms(w)  strehl    err=1-SSIM        rel.residual")
     rows = []
+    energies: list[tuple[str, float]] = []
     for spec in specs:
         psf_true, diag = pupil_psf(spec.coeffs, cfg, warn=False)
         psf_true = psf_true.to(device=dev, dtype=dtype)
         e, r = run_cell(x, psf_true, psf0, noise, n_iter, spec.label, args.chunk)
         rows.append((spec, diag.strehl, e, r))
+        energies.append((spec.label, diag.energy_kept))
         print(f"  {spec.label:24s} {spec.rms_waves:.4f}  {diag.strehl:.4f}  "
               f"{float(e.mean()):.4f}+-{float(e.std()):.4f}  "
               f"{float(r.mean()):.4f}+-{float(r.std()):.4f}")
+
+    # --- guard: PSF truncation must not be severity-correlated --------------
+    # Aberrated PSFs have heavier tails, so a kernel that is too small discards
+    # more energy from them than from the nominal one. Because the kernel is
+    # renormalised to sum 1, that silently turns the aberrated operator into an
+    # artificially compact PSF -- a systematic, severity-correlated distortion
+    # that can manufacture the very residual-severity correlation Gate 2 tests.
+    # This bit us once at kernel 63 with 31.3 nm pixels (13 point spread at the
+    # extreme cell), so it is now checked rather than assumed.
+    e_min = min(v for _, v in energies)
+    e_max = max(v for _, v in energies)
+    print()
+    print(f"PSF truncation audit: energy_kept ranges {e_min:.4f} to {e_max:.4f} "
+          f"(spread {e_max - e_min:.4f})")
+    if e_max - e_min > 0.005:
+        worst = min(energies, key=lambda kv: kv[1])
+        print(f"  WARNING: severity-correlated truncation. Worst cell {worst[0]} "
+              f"keeps {worst[1]:.4f}.")
+        print(f"  Raise --kernel (currently {args.kernel}); results below may be an artifact.")
+    elif e_min < 0.99:
+        print(f"  note: all cells below 99% but evenly ({e_min:.4f}); bias is common-mode.")
+    else:
+        print("  OK: truncation is negligible and not severity-correlated.")
 
     # --- effect sizes, computed first because the gates depend on them ------
     # The naive Gate 1 criterion "error must double" is CONFOUNDED: the nominal

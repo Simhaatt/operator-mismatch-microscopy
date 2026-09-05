@@ -285,3 +285,43 @@ def test_measurement_batch_is_seedable_per_image() -> None:
     full = draw(list(range(6)))
     chunked = torch.cat([draw([0, 1, 2]), draw([3, 4, 5])])
     assert torch.equal(full, chunked)
+
+
+def _energy_spread(n_out: int) -> float:
+    """Spread in retained PSF energy across the aberration severity ladder."""
+    cfg = PupilConfig(n_out=n_out)
+    kept = [
+        pupil_psf(c, cfg, warn=False)[1].energy_kept
+        for c in (
+            {},
+            {NAMED_MODES["spherical"]: 1 / 7},
+            {NAMED_MODES["spherical"]: 0.25},
+            {NAMED_MODES["coma_x"]: 0.25},
+        )
+    ]
+    return max(kept) - min(kept)
+
+
+@pytest.mark.parametrize("n_out", [191, 255])
+def test_adequate_kernel_truncation_is_not_severity_correlated(n_out: int) -> None:
+    """Aberrated PSFs must not lose materially more energy to cropping.
+
+    Their tails are heavier, so a short kernel discards more of them. Because the
+    kernel is renormalised to sum 1, that turns the aberrated operator into an
+    artificially compact PSF -- a severity-correlated distortion that can
+    manufacture a spurious residual/severity correlation, which is exactly what
+    Gate 2 measures. These sizes keep the effect negligible.
+    """
+    assert _energy_spread(n_out) < 0.006
+
+
+def test_short_kernel_truncation_is_severity_correlated() -> None:
+    """Regression record: why the kernel default cannot be small.
+
+    At the verified BioSR sampling of 31.3 nm, a 63-pixel kernel spans under
+    2 um and discards 13 percentage points more energy at the extreme
+    aberration than at nominal. A sweep run at that size produced an apparent
+    residual/severity correlation that vanished once the kernel was widened.
+    Pinned here so the failure mode stays visible rather than being rediscovered.
+    """
+    assert _energy_spread(63) > 0.10
