@@ -123,10 +123,10 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--pattern", default="data/biosr_pilot/test_gt/*.tif")
     ap.add_argument("--n-objects", type=int, default=150)
-    ap.add_argument("--na", type=float, default=0.794,
-                    help="derived by scripts/inspect_objects.py to match the ~2x SIM gain")
+    ap.add_argument("--na", type=float, default=1.7,
+                    help="verified: Olympus APON100XHOTIRF, Qiao et al. Nat Methods 2021")
     ap.add_argument("--wavelength-um", type=float, default=0.525)
-    ap.add_argument("--pixel-um", type=float, default=0.0626)
+    ap.add_argument("--pixel-um", type=float, default=0.0313)
     ap.add_argument("--photons", type=float, default=100.0)
     ap.add_argument("--background", type=float, default=5.0)
     ap.add_argument("--read-noise", type=float, default=1.5)

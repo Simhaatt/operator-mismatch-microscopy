@@ -46,7 +46,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--pattern", default="data/biosr_pilot/test_gt/*.tif")
     ap.add_argument("--wavelength-um", type=float, default=0.525)
-    ap.add_argument("--pixel-um", type=float, default=0.0626)
+    ap.add_argument("--pixel-um", type=float, default=0.0313)
     ap.add_argument("--band-threshold", type=float, default=1e-4,
                     help="power relative to DC defining the object band edge")
     args = ap.parse_args()

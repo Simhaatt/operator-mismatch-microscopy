@@ -58,15 +58,28 @@ __all__ = [
 class PupilConfig:
     """Optical and sampling parameters for PSF synthesis.
 
-    Defaults describe a high-NA oil-immersion objective in the regime BioSR was
-    acquired in. The pixel size is a *placeholder*: the true BioSR value is
-    unconfirmed (the Nature Methods methods section is paywalled), so it must be
-    set explicitly for any published result.
+    Defaults are the **verified** BioSR acquisition parameters, read from the
+    Methods of Qiao et al., Nature Methods 18, 194-202 (2021):
+
+    * ``na = 1.7`` -- Olympus APON100XHOTIRF, stated in "Multimodality
+      structured illumination microscopy".
+    * ``wavelength_um = 0.525`` -- emission for the 488 nm line (mEmerald/GFP).
+      The system also has 405 and 560 nm excitation; set this per channel.
+    * ``pixel_um = 0.0313`` -- the **GT-SIM grid**, which is what this project
+      uses as the object. The Hamamatsu Orca Flash 4.0 v3 gives a ~62.6-65 nm
+      widefield pixel at 100x, and SIM reconstruction upsamples 2x (512 -> 1024),
+      so the SIM grid is half that. Three independent estimates agree to ~10%:
+      65/2 = 32.5 nm from camera and magnification, 62.6/2 = 31.3 nm from the
+      commonly quoted widefield pixel, and 29.3 nm inferred from the measured
+      spectral band edge of the objects themselves.
+
+    Note the widefield pixel size is *not* the right value for these objects --
+    using it would understate every spatial frequency by a factor of two.
     """
 
     wavelength_um: float = 0.525
-    na: float = 1.4
-    pixel_um: float = 0.0626
+    na: float = 1.7
+    pixel_um: float = 0.0313
     n_out: int = 127
     oversample: int = 3  # MUST be odd -- see _center_bin
     pupil_samples: int = 64  # requested pupil *radius*, in fine-grid samples
