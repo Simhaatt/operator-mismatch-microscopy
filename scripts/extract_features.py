@@ -36,7 +36,9 @@ from src.optics.forward_model import (  # noqa: E402
 from src.optics.psf import PupilConfig, pupil_psf  # noqa: E402
 from src.reconstruction.rl import richardson_lucy  # noqa: E402
 from src.reconstruction.tv import poisson_tv  # noqa: E402
-from src.reliability.features import FEATURE_NAMES, oscr_features  # noqa: E402
+from src.reliability.features import (  # noqa: E402
+    FEATURE_NAMES, OTF_FEATURE_NAMES, oscr_features,
+)
 
 
 def build_probes(cfg, device, dtype):
@@ -71,6 +73,7 @@ def main() -> None:
     psf0 = pupil_psf(None, cfg, warn=False)[0].to(device=device, dtype=dtype)
     probes = build_probes(cfg, device, dtype)
     noise = NoiseConfig(photons=args.photons, background=5.0, read_noise_e=1.5)
+    cutoff = 2 * cfg.na / cfg.wavelength_um * cfg.pixel_um  # OTF support, cyc/px
     specs = ladder_specs(
         ["defocus", "astigmatism", "coma", "spherical"],
         ["nominal", "mild", "moderate", "severe", "extreme"],
@@ -129,7 +132,8 @@ def main() -> None:
                     x[0], psf_true, noise, seed=sample_seed(split, entry.key, spec.label)
                 )[None]
                 x_hat = reconstruct(y)
-                X.append(oscr_features(y, x_hat, psf0, probes)[0].cpu().numpy())
+                X.append(oscr_features(y, x_hat, psf0, probes,
+                                       cutoff_cyc_px=cutoff)[0].cpu().numpy())
                 e.append(float(1.0 - ssim(scale_match(x_hat[0], x[0]), x[0], data_range=1.0)))
                 sev.append(spec.severity)
                 mode.append(spec.mode)
@@ -147,7 +151,8 @@ def main() -> None:
         store[f"{split}_structure"] = np.asarray(struct)
         print(f"  {split}: {len(e)} samples")
 
-    store["feature_names"] = np.asarray(FEATURE_NAMES)
+    store["feature_names"] = np.asarray(FEATURE_NAMES + OTF_FEATURE_NAMES)
+    store["otf_cutoff_cyc_px"] = np.asarray([cutoff])
     store["photons"] = np.asarray([args.photons])
     store["reconstructor"] = np.asarray([args.reconstructor])
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
