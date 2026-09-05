@@ -28,7 +28,18 @@ import torch
 
 from .mrc import read_mrc
 
-__all__ = ["BioSREntry", "index_biosr", "load_object", "split_by_cell", "STRUCTURES"]
+__all__ = [
+    "BioSREntry",
+    "index_biosr",
+    "index_npz",
+    "load_object",
+    "split_by_cell",
+    "STRUCTURES",
+]
+
+# Populated lazily when a compact .npz export is indexed, so the same loader
+# serves both the 8 GB archives locally and a 300 MB export on a hosted runtime.
+_NPZ_CACHE: dict[str, dict] = {}
 
 STRUCTURES = ("CCPs", "ER", "F-actin", "Microtubules")
 
@@ -90,6 +101,29 @@ def index_biosr(
     return sorted(entries, key=lambda e: (e.structure, e.cell))
 
 
+def index_npz(path: str | Path) -> list[BioSREntry]:
+    """Index a compact export written by ``scripts/export_compact.py``.
+
+    The BioSR archives are 8 GB, of which this project reads 441 MB. On a hosted
+    runtime -- Colab, Kaggle -- moving the export instead of the archives is the
+    difference between a 300 MB upload and an 8 GB one.
+    """
+    path = str(Path(path))
+    if path not in _NPZ_CACHE:
+        d = np.load(path, allow_pickle=False)
+        _NPZ_CACHE[path] = {
+            "images": d["images"],
+            "structure": [str(x) for x in d["structure"]],
+            "cell": [str(x) for x in d["cell"]],
+            "pixel_um": float(d["pixel_um"][0]),
+        }
+    c = _NPZ_CACHE[path]
+    return [
+        BioSREntry(c["structure"][i], c["cell"][i], f"npz:{path}", str(i))
+        for i in range(len(c["structure"]))
+    ]
+
+
 def load_object(
     entry: BioSREntry,
     *,
@@ -104,9 +138,13 @@ def load_object(
     result is clamped at zero because it is used as a photon density, and SIM
     reconstructions ring slightly negative.
     """
-    with zipfile.ZipFile(entry.archive) as z:
-        arr, _ = read_mrc(z.read(entry.member))
-    img = np.asarray(arr[0], dtype=np.float64)
+    if entry.archive.startswith("npz:"):
+        cache = _NPZ_CACHE[entry.archive[4:]]
+        img = np.asarray(cache["images"][int(entry.member)], dtype=np.float64)
+    else:
+        with zipfile.ZipFile(entry.archive) as z:
+            arr, _ = read_mrc(z.read(entry.member))
+        img = np.asarray(arr[0], dtype=np.float64)
 
     if crop is not None:
         h, w = img.shape
