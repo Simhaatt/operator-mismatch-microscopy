@@ -67,13 +67,17 @@ def build_probes(cfg: PupilConfig, device, dtype) -> list[torch.Tensor]:
     return [p.to(device=device, dtype=dtype) for p in probes]
 
 
-def collect(entries, specs, cfg, psf0, probes, noise, n_iter, crop, device, dtype, tag):
-    """Feature matrix, targets and group labels for one split."""
+def collect(entries, true_psfs, cfg, psf0, probes, noise, n_iter, crop, device, dtype, tag):
+    """Feature matrix, targets and group labels for one split.
+
+    ``true_psfs`` is a precomputed list of ``(spec, psf)``. Synthesising the PSF
+    inside this loop instead would repeat a 1896-point FFT for every cell, which
+    is 3876 redundant syntheses over a full run.
+    """
     feats, errs, groups, cells = [], [], [], []
     for i, entry in enumerate(entries):
         x = load_object(entry, crop=crop, dtype=dtype).to(device)[None]
-        for spec in specs:
-            psf_true = pupil_psf(spec.coeffs, cfg, warn=False)[0].to(device=device, dtype=dtype)
+        for spec, psf_true in true_psfs:
             y = simulate_measurement(
                 x[0], psf_true, noise, seed=sample_seed(tag, entry.key, spec.label)
             )[None]
@@ -177,10 +181,16 @@ def main() -> None:
           f"probes={len(probes)}  cells=" +
           ", ".join(f"{k}:{len(v)}" for k, v in sp.items()))
 
+    print("  precomputing true operators once (a 1896-point FFT each)...")
+    true_psfs = [
+        (spec, pupil_psf(spec.coeffs, cfg, warn=False)[0].to(device=device, dtype=dtype))
+        for spec in specs
+    ]
+
     data = {}
     for split, entries in sp.items():
         print(f"  collecting {split} ({len(entries)} cells x {len(specs)} operators)...")
-        data[split] = collect(entries, specs, cfg, psf0, probes, noise,
+        data[split] = collect(entries, true_psfs, cfg, psf0, probes, noise,
                               args.n_iter, args.crop, device, dtype, split)
 
     Xtr, etr, _, _ = data["train"]
