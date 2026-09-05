@@ -263,3 +263,25 @@ def test_batched_blur_matches_per_sample() -> None:
     x = torch.rand(4, 32, 32, dtype=F64)
     looped = torch.stack([apply_psf(x[i], h) for i in range(4)])
     assert torch.allclose(apply_psf(x, h), looped, atol=1e-12)
+
+
+def test_measurement_batch_is_seedable_per_image() -> None:
+    """Per-image seeding must make results independent of batch composition.
+
+    The gate scripts process objects in chunks to bound memory. If noise were
+    drawn per batch rather than per image, results would depend on how work
+    happened to be divided -- breaking reproducibility across machines, chunk
+    sizes and Kaggle shards.
+    """
+    h, _ = pupil_psf(None, PupilConfig(n_out=31), warn=False)
+    noise = NoiseConfig(photons=100.0)
+    x = torch.rand(6, 32, 32, dtype=F64)
+
+    def draw(indices: list[int]) -> torch.Tensor:
+        return torch.stack(
+            [simulate_measurement(x[j], h, noise, seed=sample_seed("cell", j)) for j in indices]
+        )
+
+    full = draw(list(range(6)))
+    chunked = torch.cat([draw([0, 1, 2]), draw([3, 4, 5])])
+    assert torch.equal(full, chunked)

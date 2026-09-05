@@ -95,6 +95,30 @@ def evaluate(x, y, x_hat, psf0):
     return e, r
 
 
+def run_cell(x, psf_true, psf0, noise, n_iter, label, chunk):
+    """Simulate, reconstruct and score one operator cell in bounded memory.
+
+    Each image is noised with its OWN seed, derived from ``(label, index)``, so
+    the result is invariant to ``chunk``. Seeding per batch instead would make
+    the measurements depend on how the work happened to be divided, which would
+    silently break reproducibility across machines and Kaggle shards.
+    """
+    errs, resids = [], []
+    for i in range(0, x.shape[0], chunk):
+        xb = x[i : i + chunk]
+        yb = torch.stack([
+            simulate_measurement(xb[j], psf_true, noise,
+                                 seed=sample_seed(label, i + j))
+            for j in range(xb.shape[0])
+        ])
+        xhat = reconstruct(yb, psf0, n_iter, noise)
+        e, r = evaluate(xb, yb, xhat, psf0)
+        errs.append(e)
+        resids.append(r)
+        del yb, xhat
+    return torch.cat(errs), torch.cat(resids)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--pattern", default="data/biosr_pilot/test_gt/*.tif")
@@ -109,6 +133,8 @@ def main() -> None:
     ap.add_argument("--kernel", type=int, default=63)
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--out", default=None, help="write a JSON record here")
+    ap.add_argument("--chunk", type=int, default=16,
+                    help="images processed at once; bounds peak memory")
     ap.add_argument("--n-iter", type=int, default=None,
                     help="force the RL iteration count instead of selecting it")
     ap.add_argument("--n-iter-grid", type=int, nargs="+",
@@ -135,7 +161,11 @@ def main() -> None:
     )
 
     # --- select n_iter once, on the nominal operator -------------------------
-    y0 = simulate_measurement(x, psf0, noise, seed=sample_seed("gate1", "nominal"))
+    y0 = torch.stack([
+        simulate_measurement(x[j], psf0, noise,
+                             seed=sample_seed("none:nominal", j))
+        for j in range(x.shape[0])
+    ])
     if args.n_iter is not None:
         n_iter = args.n_iter
         print(f"Richardson-Lucy n_iter forced to {n_iter} (no selection pass)")
@@ -170,9 +200,7 @@ def main() -> None:
     for spec in specs:
         psf_true, diag = pupil_psf(spec.coeffs, cfg, warn=False)
         psf_true = psf_true.to(device=dev, dtype=dtype)
-        y = simulate_measurement(x, psf_true, noise, seed=sample_seed("gate1", spec.label))
-        x_hat = reconstruct(y, psf0, n_iter, noise)
-        e, r = evaluate(x, y, x_hat, psf0)
+        e, r = run_cell(x, psf_true, psf0, noise, n_iter, spec.label, args.chunk)
         rows.append((spec, diag.strehl, e, r))
         print(f"  {spec.label:24s} {spec.rms_waves:.4f}  {diag.strehl:.4f}  "
               f"{float(e.mean()):.4f}+-{float(e.std()):.4f}  "
