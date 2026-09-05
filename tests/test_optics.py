@@ -16,6 +16,7 @@ invalidate the scientific claims downstream:
 from __future__ import annotations
 
 import math
+from pathlib import Path
 
 import pytest
 import torch
@@ -325,3 +326,21 @@ def test_short_kernel_truncation_is_severity_correlated() -> None:
     Pinned here so the failure mode stays visible rather than being rediscovered.
     """
     assert _energy_spread(63) > 0.10
+
+
+def test_gate_script_unpacks_error_and_residual_distinctly() -> None:
+    """Guard against a tuple-unpacking slip in the gate analysis.
+
+    ``rows`` holds ``(spec, strehl, error, residual)``. Binding the residual
+    from position 2 instead of 3 makes the error and residual arrays identical,
+    which silently yields a perfect within-image rank correlation of 1.000 --
+    a number that looks like a dramatic scientific finding rather than a bug.
+    """
+    import re
+
+    src = (Path(__file__).resolve().parents[1] / "scripts" / "gate1_phenomenon.py").read_text()
+    e_line = re.search(r"E = torch\.stack\(\[(.+?)\]\)", src).group(1)
+    r_line = re.search(r"R = torch\.stack\(\[(.+?)\]\)", src).group(1)
+    assert e_line != r_line, "error and residual are unpacked from the same position"
+    assert "_, _, e, _" in e_line
+    assert "_, _, _, r" in r_line

@@ -281,10 +281,40 @@ def main() -> None:
         torch.tensor([float(r[2].mean()) for r in rows]),
         torch.tensor([float(r[3].mean()) for r in rows]),
     )
+    # Decompose the pooled correlation. Pooling across cells conflates the
+    # between-cell trend (severity raises error a lot and the residual a little,
+    # so ranks co-move) with the within-cell, per-image association -- and only
+    # the latter is what a per-image reliability bound depends on. Reported
+    # separately so the pooled number cannot be mistaken for per-image
+    # predictive power.
+    within = [spearman(e, r) for _, _, e, r in rows]
+    rho_within = sum(within) / len(within)
+
+    # The decisive decomposition for THIS project. Within a cell the operator is
+    # fixed, so a within-cell correlation is driven by image content: hard images
+    # have both higher error and higher residual. That is not the question. The
+    # question is whether the residual tracks OPERATOR MISMATCH, which requires
+    # holding the image fixed and varying the operator -- a paired, within-image
+    # design across cells.
+    E = torch.stack([e for _, _, e, _ in rows])   # (cells, images)
+    R = torch.stack([r for _, _, _, r in rows])
+    per_image = [spearman(E[:, j], R[:, j]) for j in range(E.shape[1])]
+    rho_within_image = sum(per_image) / len(per_image)
+
+    # Fixed-effects view: remove each image's own mean, then pool. This strips
+    # content entirely and leaves only operator-induced variation.
+    Ec = E - E.mean(dim=0, keepdim=True)
+    Rc = R - R.mean(dim=0, keepdim=True)
+    rho_fixed_effects = spearman(Ec.flatten(), Rc.flatten())
     print()
     print("GATE 2 -- the nominal residual must NOT already predict the error:")
     print(f"  Spearman rho(e, r), pooled over all images and cells : {rho_all:+.4f}")
     print(f"  Spearman rho(e, r), over cell means                  : {rho_cell:+.4f}")
+    print(f"  mean WITHIN-cell Spearman rho(e, r)                 : {rho_within:+.4f}")
+    print(f"    per-cell range: {min(within):+.3f} to {max(within):+.3f}")
+    print(f"  mean WITHIN-IMAGE rho across operators               : {rho_within_image:+.4f}")
+    print(f"    per-image range: {min(per_image):+.3f} to {max(per_image):+.3f}")
+    print(f"  fixed-effects rho (image means removed)              : {rho_fixed_effects:+.4f}")
     print("  (the cell-mean correlation is not decision-relevant on its own: the")
     print("   residual can be monotone in severity yet useless per image, and its")
     print("   sign is not even stable across photon levels)")
@@ -348,6 +378,10 @@ def main() -> None:
             "gate2_residual_insufficient": bool(gate2),
             "spearman_pooled": rho_all,
             "spearman_cell_means": rho_cell,
+            "spearman_within_cell": rho_within,
+            "spearman_within_image": rho_within_image,
+            "spearman_fixed_effects": rho_fixed_effects,
+            "spearman_within_cell_all": within,
         },
     }
     if args.out:
