@@ -85,3 +85,78 @@ is unavailable under content shift. RLCP's own Theorem 3 bounds coverage loss in
 terms of kernel localisation quality, and that bound is vacuous when the test
 point sits outside calibration support -- which is precisely the regime measured
 above at 93.6%.
+
+---
+
+# Gate 4b -- the diagnosis was right, and it partly repairs the failure
+
+Acting on the diagnosis produces four findings, two positive and two negative.
+All confirmed at both photon levels.
+
+## 1. Localise on novelty, not on severity (positive)
+
+Replacing the severity-trained mismatch score with a **Mahalanobis distance from
+the calibration feature distribution** -- blind, computable at deployment --
+substantially repairs coverage:
+
+| axis | severity localiser | **novelty localiser** |
+|---|---|---|
+| operator shift, 100 ph | 0.325 | **0.750** |
+| operator shift, 15 ph | 0.332 | **0.768** |
+| content shift, 100 ph | 0.474 | **0.696** |
+| content shift, 15 ph | 0.512 | **0.597** |
+| in-distribution | 0.908 | 0.882 |
+
+This matters for the paper's positioning: the localiser the original plan
+proposed -- an estimate of optical mismatch severity -- is the *wrong* covariate,
+and is worse than doing nothing. What localisation needs is a measure of distance
+from the calibration set.
+
+## 2. Operator shift is cheaply repairable by inflation (positive)
+
+Simply taking a stricter quantile restores nominal coverage on the operator axis
+at almost no cost in width:
+
+| axis | alpha needed | coverage | width vs alpha=0.1 |
+|---|---|---|---|
+| operator shift, 100 ph | 0.02 | 0.900 | 0.6175 vs 0.5938, **+4%** |
+| operator shift, 15 ph | 0.001 | 0.904 | 0.6664 vs 0.6420, +4% |
+
+So for the axis this project is actually about -- the optics drifting away from
+the calibrated configuration -- there is a working, almost free recipe.
+
+## 3. Content shift is not repairable from calibration data (negative, hard)
+
+No amount of inflation works. At alpha = 0.001, content shift still reaches only
+0.821 (100 photons) and 0.678 (15 photons), against a 0.90 target; combined shift
+reaches 0.111 and 0.167. This is the distribution-free impossibility biting: the
+calibration set simply does not contain the failure mode, and no quantile of it
+can conjure one.
+
+## 4. Abstaining on novelty backfires (negative, and counterintuitive)
+
+The obvious safety mechanism -- refuse to certify unfamiliar inputs -- makes
+things **worse**, monotonically, at both photon levels:
+
+| content shift | accept 100% | 75% | 50% | 25% |
+|---|---|---|---|---|
+| coverage, 100 ph | 0.474 | 0.315 | 0.144 | **0.052** |
+| coverage, 15 ph | 0.524 | 0.369 | 0.148 | **0.026** |
+
+Keeping only the *most familiar-looking* held-out-structure inputs gives the
+*worst* coverage. The plausible reading: clathrin pits are sparse and punctate,
+so their features resemble easy training cases -- low residual, low contrast --
+and the model issues a narrow bound, while true reconstruction error is high.
+
+**The dangerous cases are the ones that look familiar.** That is a direct warning
+about OOD-detection as a safety mechanism for reconstruction, and it is worth
+reporting on its own.
+
+## Where this leaves the paper
+
+* A working method for **operator shift**: novelty-localised calibration, or
+  inflation, restoring nominal coverage at ~4% width cost.
+* A measured, principled **impossibility for content shift**, with the obvious
+  repairs each shown to fail for a specific reason.
+* A cautionary result about novelty-based abstention that generalises beyond
+  microscopy.
