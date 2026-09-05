@@ -2,200 +2,158 @@
 
 A fluorescence-microscopy restoration model can return an image that looks
 convincing even when the microscope's true optical response differs from the one
-the model assumed. This repository asks whether we can estimate, **without clean
-ground truth**, how unreliable that reconstruction is -- with calibrated bounds
-that survive optical-model shift.
+the model assumed. This project asks whether we can bound how wrong that
+reconstruction is, **without clean ground truth**, with calibration that survives
+optical and specimen shift.
 
 The contribution is not a better reconstructor. It is a post-hoc reliability
-layer that attaches to any reconstructor, plus an honest account of when
-calibration breaks.
+layer, plus an honest account of when calibration breaks.
 
-## Why this framing and not a broader one
+## Headline results so far
 
-Calibrated no-reference error bounds for image reconstruction is a **crowded**
-field (Wen/Ahmad/Schniter TMLR 2025 and ECCV 2024; QUTCC, which already covers
-microscopy; CHEM; conformal failure masks for endoscopic super-resolution). Two
-parts of the obvious framing are already taken:
+All on real BioSR data (228 cells, four structures), Richardson-Lucy
+reconstruction, verified optics. No GPU used yet.
 
-* The **null-space theory** is published. Bhadra, Kelkar, Brooks & Anastasio,
-  *On Hallucinations in Tomographic Image Reconstruction*, IEEE TMI 40(11)
-  3249-3260 (2021) formally decomposes reconstruction error into measurement and
-  null-space components and states the null component cannot be stably estimated
-  from measurement data alone. We cite it as our foundation.
-* **Kernel-weighted shift-adaptive calibration** is published, and the
-  deterministic form is known to be *broken*: Hore & Barber
-  ([arXiv:2310.07850](https://arxiv.org/abs/2310.07850)) note that deterministic
-  localized conformal prediction has marginal coverage that "may be arbitrarily
-  high or arbitrarily low". Their randomized variant (RLCP) fixes it, and its
-  Theorem 3 already bounds coverage loss under covariate shift.
+**1. Physics-derived features beat the obvious baseline, and are far more robust.**
+Predicting reconstruction error from a single `(y, x_hat)` observation, with
+identical model class and conformal calibration:
 
-What is *not* taken: **every one of those methods assumes the forward operator is
-known and fixed.** That is the gap this project targets.
+| photons | predictor | test rho | bound width | worst-group coverage |
+|---|---|---|---|---|
+| 15 | plain residual | +0.267 | 0.6405 | 0.486 |
+| 15 | **PSF-family profile** | **+0.971** | **0.4749** | **0.800** |
+| 100 | plain residual | +0.748 | 0.5125 | 0.600 |
+| 100 | **PSF-family profile** | **+0.961** | **0.3924** | **0.807** |
 
-## Status
+Bounds are **23-26% tighter at equal coverage**. The sharper point is stability:
+the plain residual's usefulness collapses as photons drop (rho 0.748 -> 0.267)
+while the profile is flat (0.961 -> 0.971). Fifteen photons is where live-cell
+imaging actually operates, so the naive baseline fails exactly where it matters.
 
-Physics foundation complete and validated. Gates 1 and 2 **pass**.
+This also settles the strongest objection to the method: `r_k` is computable from
+`(y, x_hat)` alone, so the profile could have been redundant with what a learner
+extracts directly. It is not.
 
-### Verified physics
+**2. Conformal calibration collapses under shift.** On a held-out biological
+structure, coverage falls to **0.27-0.41 against a nominal 0.90**, worst-group
+coverage near zero, for both predictors. This is standard methodology applied
+exactly as the literature applies it, and it is the gap the novelty audit
+identified as open: every conformal imaging paper assumes calibration and test
+are exchangeable.
+
+Whether shift-aware calibration repairs this is Gate 4, in progress.
+
+## What was tried and did not survive
+
+Recorded because the retractions are as informative as the results.
+
+* **"The measurement residual is blind to operator mismatch."** Withdrawn. Holding
+  a specimen fixed and varying the operator, the residual tracks error at
+  rho 0.89-0.92 above 100 photons. The blindness is real but **photon-dependent**,
+  holding only in the photon-starved regime (rho -0.39 at 15 photons).
+* **"The residual is doubly blind -- floored by shot noise and driven onto that
+  floor by the reconstructor's own objective."** The mechanism is real (RL drives
+  its residual to 0.994x the shot-noise floor) but does not imply blindness, and
+  the claim was too strong.
+* **"The Gate 2 failure is a kernel-truncation artifact."** Wrong. Truncation was
+  a genuine artifact and is now guarded against, but the failure survived fixing it.
+* **"The correlation is an artifact of pooling across severity cells."** Wrong.
+  Within-cell rho is +0.77.
+
+## Verified physics
+
+134 tests. Each pins a property that would otherwise invalidate downstream claims.
 
 | Property | Result |
 |---|---|
-| PSF vs analytic Airy pattern | cosine similarity 1.000000, total L1 error 0.4% |
-| FWHM scaling | tracks 0.5145 lambda/NA within 0.8-3.3%, lambda 488-640 nm, NA 0.9-1.4 |
-| Strehl at the Marechal limit (lambda/14) | 0.8148, matching exp(-(2 pi sigma)^2) to 0.3% |
-| Blur adjoint `<Hx,z> = <x,H^T z>` | exact to 3.7e-16 across four padding modes |
+| PSF vs analytic Airy pattern | cosine similarity 1.000000, L1 error 0.4% |
+| FWHM scaling | 0.5145 lambda/NA within 0.8-3.3%, lambda 488-640 nm, NA 0.9-1.4 |
+| Strehl at the Marechal limit | 0.8148 at lambda/14, matching exp(-(2 pi sigma)^2) to 0.3% |
+| Blur adjoint `<Hx,z> = <x,H^T z>` | exact to 3.7e-16, all four padding modes |
 | Poisson-Gaussian variance | 53.991 vs theoretical `rate + read^2` = 54.000 |
-| Seed reproducibility | stable across `PYTHONHASHSEED` (blake2b, not `hash()`) |
+| Seed reproducibility | stable across `PYTHONHASHSEED` and chunk size |
 
-Two real bugs the tests caught, both silent in an image but fatal downstream:
+Four real bugs caught, all silent in a rendered image:
 
 1. **Even oversampling shifted every PSF by half a pixel.** A 2x2 binning box
-   cannot be centred on the peak sample, so the PSF lost its symmetry (asymmetry
-   0.07, cosine similarity to Airy only 0.83). Odd oversampling is now required.
-2. **The blur adjoint was wrong for reflect padding.** `H = Crop . Conv . Pad`,
-   so `H^T = Pad^T . Conv^T . Crop^T`, and `Pad^T` is a scatter-add *fold*, not
+   cannot be centred on the peak sample, so PSFs lost their symmetry (cosine
+   similarity to Airy 0.83, not 1.0). Odd oversampling is now required.
+2. **The blur adjoint was wrong under reflect padding.** `H = Crop . Conv . Pad`,
+   so `H^T = Pad^T . Conv^T . Crop^T`, and `Pad^T` is a scatter-add fold, not
    another pad. The shortcut broke the adjoint identity by 1.5e-3 -- enough to
-   move Richardson-Lucy's fixed point and corrupt unrolled-network gradients.
+   move Richardson-Lucy's fixed point.
+3. **A factor-of-two pixel size.** The widely quoted 62.6 nm BioSR pixel is the
+   *widefield* pixel; SIM ground truth is 2x upsampled, so objects are at 31.3 nm.
+4. **Severity-correlated PSF truncation.** Aberrated PSFs have heavier tails, so a
+   short kernel discards more of them; after renormalisation the aberrated
+   operator became artificially compact, manufacturing a residual/severity
+   correlation. At 31.3 nm a 63-px kernel loses 13 points of energy at extreme
+   aberration; 191 px keeps the spread under 0.6.
 
-### The operator is derived from the data, not chosen
+## The operator is derived from the data, then confirmed against the paper
 
-BioSR's high-resolution targets are themselves SIM reconstructions, hence already
-band-limited. If the simulated cutoff sat above the object's band limit, the
-hallucination story would be an artefact of the data pipeline. Measured by
-`scripts/inspect_objects.py`:
+BioSR's ground truth is itself a SIM reconstruction, hence already band-limited.
+If the simulated cutoff sat above the object's band limit there would be no
+genuine structure for a deconvolver to invent, and the whole study would be
+circular. Measured (`scripts/inspect_objects.py`):
 
-* Object band edge: **0.379 cycles/pixel** (76% of pixel Nyquist).
-* Matching the real ~2x linear-SIM resolution gain gives **NA = 0.794** (gain
-  1.99x), leaving **11.6% of object energy in the operator's null space**.
-* Had we used NA 1.4, only **1.5%** would be -- the study would have been nearly
-  circular.
+* Object band edge **0.379 cycles/pixel**, 76% of pixel Nyquist.
+* At the verified optics (NA 1.7, 31.3 nm, 525 nm) the widefield OTF cutoff is
+  **0.2027 cyc/px**, leaving **9.05%** of object energy in the operator's null
+  space, with a measured SIM gain of 1.87x against the theoretical 2x.
 
-The operator is **incoherent**: its transfer function is the OTF (pupil
-autocorrelation), so the support radius is `2 NA / lambda`, not the amplitude
-cutoff `NA / lambda`. Confusing the two overstates the null-space band by exactly
-a factor of two.
+Acquisition parameters are verified, not assumed: NA 1.7 (Olympus
+APON100XHOTIRF) and 405/488/560 nm from the Methods of Qiao et al., Nature
+Methods 18, 194-202 (2021); pixel sizes read directly from the MRC headers.
 
-### Gate 1 and Gate 2 results
+Note the operator is **incoherent**: its transfer function is the OTF, the pupil
+autocorrelation, so support is `2 NA / lambda`, not the amplitude cutoff
+`NA / lambda`. Confusing the two overstates the null-space band by exactly 2x.
 
-At severe aberration (lambda/7 RMS, Strehl ~0.42), with the reconstructor always
-assuming the nominal PSF:
+## Positioning
 
-* Reconstruction error **doubles** (1.97x-2.05x, consistent across defocus,
-  astigmatism, coma and spherical) while the nominal residual moves only 2-4%.
-* Per-image discriminability of nominal vs severe: **d(error) 2.35-2.62** against
-  **d(residual) 0.13-0.24** -- an **11-18x gap**.
+Three parts of the obvious framing are already taken, and the paper must not
+claim them:
 
-The *mechanism* is stronger than the correlation:
+| Piece | Owner |
+|---|---|
+| Null-space theory of hallucination | Bhadra et al., IEEE TMI 40(11) 2021 |
+| Re-blur-and-compare in microscopy | SQUIRREL, Nature Methods 2018 |
+| Kernel-weighted shift-adaptive calibration | Guan's LCP -- and the deterministic form is provably broken; use Hore & Barber's RLCP |
+| PSF error propagation | Astronomy, since Paulin-Henriksson 2008 |
 
-* Predicted shot-noise floor of the relative residual: **0.0810**
-* Observed residual, nominal operator: **0.0876**
-* Observed residual, worst operator: **0.0938**
-* The entire operator-mismatch signal is **7.7% of the noise floor.**
+What survives: **every existing calibrated-UQ method for imaging assumes the
+forward operator is known and fixed.** See [docs/gate0_novelty.md](docs/gate0_novelty.md)
+for the full audit, including a named competitive risk.
 
-So the measurement residual is not merely weakly informative: at BioSR's mid
-photon levels the model-error projection into the measurement domain falls
-*below the photon noise floor*. That is the quantitative form of Bhadra et al.'s
-null-space argument.
+## Workflow
 
-### Photon sweep: the mechanism is real but incomplete
+```text
+Gate 0  Novelty audit ........................... PASS (narrowed)
+Gate 1  Does mismatch cause plausible-but-wrong output? .. PASS
+Gate 2  Is the trivial residual already enough? ... FAILED above 100 photons
+Gate 3  Does the PSF-family profile beat it? ...... PASS (23-26% tighter)
+Gate 4  Does shift-aware calibration repair coverage? .... in progress
+        [first GPU work: generalise beyond Richardson-Lucy]
+```
 
-The noise-floor explanation makes a falsifiable prediction -- raise the photon
-budget, the floor drops as 1/sqrt(N), and the residual must become informative.
-Swept over BioSR's real 15-600 range plus one probe beyond it (50 objects per
-level, `experiments/gate1/`):
-
-| photons | RL iters | noise floor | signal/floor | d(error) | d(residual) | ratio |
-|---|---|---|---|---|---|---|
-| 15   | 30  | 0.2058 | 0.0015 | 2.47 | 0.01 | 176x |
-| 50   | 50  | 0.1164 | 0.0557 | 2.83 | 0.08 | 34x |
-| 100  | 100 | 0.0826 | 0.0849 | 3.04 | 0.14 | 21x |
-| 300  | 150 | 0.0478 | 0.1033 | 3.11 | 0.24 | 13x |
-| 600  | 150 | 0.0338 | 0.0982 | 3.09 | 0.27 | 12x |
-| 3000 | 150 | 0.0151 | 0.0923 | 3.07 | 0.24 | 13x |
-
-**Confirmed:** the absolute error increase from severe aberration is essentially
-constant across the whole range (+0.208, +0.224, +0.231, +0.234, +0.233, +0.233).
-The aberration adds a fixed amount of structural error; the error *ratio* is
-compressed at low photon counts only because shot noise inflates the baseline.
-This is why Gate 1 tests effect size rather than a ratio.
-
-**Partly refuted:** the residual does become more informative as the floor drops
-(d(residual) 0.01 -> 0.27 from 15 to 600 photons), so shot noise is genuinely
-*a* mechanism -- but it then **saturates**. Even at a 13.6x lower noise floor,
-d(residual) never exceeds ~0.3 while d(error) sits at ~3.1. Shot noise alone
-therefore does **not** explain the blindness; a second, noise-independent
-component is present.
-
-**Confound resolved -- and the mechanism is stronger than expected.** `n_iter`
-hit the selection grid's ceiling of 150 at 300 photons and above, so those
-reconstructions were under-converged and the saturation coincided exactly with
-that cap. Forcing the iteration count at 3000 photons settles it
-(`experiments/convergence/`):
-
-| n_iter | err(nom) | resid(nom) | resid / noise floor | d(error) | d(residual) | ratio |
-|---|---|---|---|---|---|---|
-| 50   | 0.1905 | 0.0190 | 1.284 | 2.15 | 0.70 | 3.1x |
-| 150  | 0.1603 | 0.0159 | 1.074 | 2.46 | 0.23 | 10.9x |
-| 400  | 0.1448 | 0.0152 | 1.027 | 2.67 | 0.38 | 7.1x |
-| 1000 | 0.1374 | 0.0150 | **1.014** | 2.83 | 0.40 | 7.1x |
-
-Under-convergence does **not** explain the blindness: at `n_iter = 1000`, where
-the reconstruction is well converged, d(residual) is still only 0.40 against
-d(error) 2.83.
-
-The decisive quantity is the last column of the third block: **Richardson-Lucy
-drives its own residual asymptotically onto the shot-noise floor**, reaching
-1.014x it. That is structural rather than incidental -- RL's update *is* a
-data-fidelity minimisation, so it reduces `||H_0 x_hat - y||` toward the noise
-floor whether or not `H_0` is the right operator, absorbing the operator error
-into `x_hat` where it lands in the null space and becomes invisible.
-
-So the residual is **doubly blind**: bounded below by shot noise, and actively
-driven onto that bound by the reconstructor's own objective. This argument
-extends to any method with an explicit data-fidelity term -- Richardson-Lucy,
-Poisson-TV, and unrolled networks with data consistency -- which covers three of
-the four planned reconstructors. Whether a purely learned reconstructor (a U-Net
-with no explicit fidelity term) behaves the same way is **untested and worth
-checking**, since it is the one case where the residual might retain signal.
-
-Confirmed at 50 objects (`experiments/convergence/n50_*`), which also sharpens
-the endpoint:
-
-| n_iter | err(nom) | resid / noise floor | d(error) | d(residual) | ratio |
-|---|---|---|---|---|---|
-| 50   | 0.1826 | 1.282 | 2.71 | 0.68 | 4.0x |
-| 1000 | 0.1293 | **0.994** | 3.38 | 0.49 | 7.0x |
-
-At 1000 iterations the residual reaches **0.994x** the predicted shot-noise
-floor -- marginally *below* it, because unregularised Richardson-Lucy begins
-fitting the particular noise realisation as well. That is the cleanest statement
-of the point: the residual is a measure of how well the algorithm fit the data,
-not of whether the answer is right, and a data-fidelity iteration will drive it
-to the floor and through it regardless of whether the operator is correct.
-
-The d(error) : d(residual) ratio is stable at ~7x between the 20- and 50-object
-runs at 3000 photons, and is 11-29x at BioSR's real photon levels. The earlier
-non-monotonicity of d(residual) in `n_iter` (0.70, 0.23, 0.38, 0.40 at 20
-objects) was small-sample noise; the ratio and the `resid / floor` trend are the
-stable quantities.
-
-**Side finding:** coma is the most residual-visible aberration
-(d(residual) 0.53 at 3000 photons, against 0.02-0.30 for the others) and is the
-single cell that fails Gate 1 there. It is the only *asymmetric* mode of the
-four, so it leaves a measurement-domain signature the residual can partly see.
-Symmetric aberrations stay near-invisible.
+The ordering is the point. Gates 1-3 cost CPU-hours; Gate 4 and the reconstructor
+sweep cost ~95 T4-hours. Establishing the phenomenon first is what prevents
+spending those hours on a dead hypothesis -- and Gate 2 did kill the original one.
 
 ## Layout
 
 ```text
-src/optics/         zernike.py (OSA/ANSI, RMS-normalised), psf.py (pupil
-                    synthesis with sampling guards), forward_model.py
-                    (Poisson-Gaussian, exact adjoint), aberrations.py
-                    (Marechal-anchored severity ladder)
-src/reconstruction/ rl.py (Richardson-Lucy with the true H^T 1 normaliser)
-src/metrics/        image.py (SSIM, PSNR, radial power spectrum, scale match)
-scripts/            inspect_objects.py, gate1_phenomenon.py
-tests/              test_optics.py -- 130 tests pinning the physics
+src/optics/         zernike (OSA/ANSI, RMS-normalised), psf (sampling guards),
+                    forward_model (Poisson-Gaussian, exact adjoint),
+                    aberrations (Marechal-anchored severity ladder)
+src/reconstruction/ rl (Richardson-Lucy with the true H^T 1 normaliser)
+src/reliability/    features (physics-consistency profile, spectra)
+src/data/           mrc (dependency-free reader), biosr (cell-blocked splits)
+src/metrics/        image (SSIM, PSNR, radial spectrum, scale match)
+scripts/            inspect_objects, gate1_phenomenon, gate3_deployment,
+                    extract_features, gate4_calibration, summarize_gate1
+tests/              134 tests pinning the physics and the analysis
 ```
 
 ## Reproducing
@@ -204,27 +162,24 @@ tests/              test_optics.py -- 130 tests pinning the physics
 pip install -e ".[dev]"
 python -m pytest -q
 python scripts/inspect_objects.py
-python scripts/gate1_phenomenon.py --n-objects 50
+python scripts/extract_features.py --photons 100 --n-iter 75 --out experiments/features/photons_100.npz
+python scripts/gate4_calibration.py --features experiments/features/photons_100.npz
 ```
 
-Data is not committed; see [data/README.md](data/README.md) for fetch commands
-and licensing. Measurements are regenerated from deterministic seeds rather than
-stored, because the full operator-shift matrix would run to hundreds of GB
-against a 20 GB Kaggle working disk.
+Data is not committed; see [data/README.md](data/README.md) for fetch commands,
+licensing and the verified acquisition parameters. Measurements are regenerated
+from deterministic per-image seeds rather than stored, because the full shift
+matrix would run to hundreds of GB against a 20 GB Kaggle working disk.
 
-## Open items
+## Open
 
-* **Gate 0** (still owed): a systematic novelty sweep, including the astronomy
-  and adaptive-optics vocabulary, plus full-text reads of CHEM, QUTCC and
-  BayesDL-SIM. The audit lane assigned to this returned nothing.
-* **Gate 3** (the likely kill shot): `r_k` is computable from `y` and `x_hat`
-  alone, so the PSF-family profile is a hand-crafted feature of data a learner
-  already sees. It must beat a predictor trained on raw `(y, x_hat)`, or be
-  reframed as an interpretable inductive bias rather than an information gain.
-* **Unconfirmed:** BioSR's NA, emission wavelengths and camera pixel size. The
-  commonly cited 62.6 nm pixel is the current default and must be confirmed
-  before publication.
-* **W2S licensing** must be resolved before mirroring that dataset.
-* The final PSF library should move to the vectorial Richards-Wolf propagator of
-  `psf-generator` (Liu et al., [arXiv:2502.03170](https://arxiv.org/abs/2502.03170)),
-  whose authors report the scalar model is only 1.5-3x faster than scalar.
+* **Gate 4** -- the actual contribution, unproven until it runs.
+* **One reconstructor.** Everything is Richardson-Lucy. Must generalise to TV, a
+  U-Net and an unrolled network. The U-Net matters most: it has no explicit
+  data-fidelity term, so its residual may behave differently.
+* **One held-out structure.** Needs rotating through all four.
+* **Pure simulation.** Real-optics validation via W2S (488/561/640 nm gives a real
+  PSF-shift axis) is a 40.7 GB download, deferred.
+* **A limitation to report:** the profile degrades *more* than the plain residual
+  under content shift (ood rho 0.49 vs 0.76), so richer features are more tied to
+  training-structure content.
