@@ -43,6 +43,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from src.metrics.stats import spearman  # noqa: E402
+
 
 def one_sided_correction(scores: np.ndarray, alpha: float) -> float:
     """Finite-sample conformal correction: the ceil((n+1)(1-alpha)) order stat."""
@@ -166,14 +168,6 @@ def coverage_report(e, U, groups):
         "mean_width": float(U.mean()),
         "n": int(len(e)),
     }
-
-
-def spearman(a, b):
-    ra = np.argsort(np.argsort(a)).astype(float)
-    rb = np.argsort(np.argsort(b)).astype(float)
-    ra -= ra.mean(); rb -= rb.mean()
-    d = np.sqrt((ra**2).sum() * (rb**2).sum())
-    return float((ra * rb).sum() / d) if d > 0 else 0.0
 
 
 MILD = ("nominal", "mild", "moderate")

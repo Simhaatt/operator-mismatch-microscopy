@@ -40,6 +40,8 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from src.metrics.stats import spearman  # noqa: E402
+
 from src.data.biosr import index_biosr, load_object, split_by_cell  # noqa: E402
 from src.metrics.image import scale_match, ssim  # noqa: E402
 from src.optics.aberrations import ABERRATION_MODES, ladder_specs  # noqa: E402
@@ -107,15 +109,6 @@ def conformal_upper_bound(model, Xc, ec, Xt, alpha):
     k = int(np.ceil((n + 1) * (1 - alpha))) - 1
     correction = np.sort(scores)[min(max(k, 0), n - 1)]
     return model.predict(Xt) + correction
-
-
-def spearman(a, b):
-    ra = np.argsort(np.argsort(a)).astype(float)
-    rb = np.argsort(np.argsort(b)).astype(float)
-    ra -= ra.mean()
-    rb -= rb.mean()
-    d = np.sqrt((ra**2).sum() * (rb**2).sum())
-    return float((ra * rb).sum() / d) if d > 0 else 0.0
 
 
 def evaluate(name, cols, Xtr, etr, Xc, ec, sets, alpha):

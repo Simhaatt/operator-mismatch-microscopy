@@ -33,7 +33,8 @@ BioSR data (228 cells, 4 structures). No GPU has been used yet.
 | 3 | Does the operator profile beat the residual? | **PASS — 23–26% tighter bounds** |
 | 4 | Does shift-aware calibration repair coverage? | FAILED, diagnosed |
 | 4b | Does the diagnosis suggest a fix? | PARTIAL — operator shift yes, content shift no |
-| 5 | Can coverage loss be bounded? | **PASS — near-tight one-sided bound, rho 0.985** |
+| 5 | Can coverage loss be bounded? | **PASS — one-sided bound, rho 0.938, holds 16/16** |
+| 6 | Does the OTF block beat it blind? | **FAILED — the plain residual wins (0.740 vs 0.406)** |
 
 Headline results, all reproducible from cached features:
 
@@ -41,14 +42,26 @@ Headline results, all reproducible from cached features:
   are stable across photon levels (rho 0.961→0.971) where the plain residual
   collapses (0.748→0.267).
 - **Coverage bound**: `coverage >= 1 - alpha - d+` where `d+` is the *one-sided*
-  excess of test conformity-score mass above calibration. Holds 16/16, mean slack
-  +0.038, rho(coverage, -d+) = **+0.985**. The symmetric total-variation version
-  is valid but useless (rho +0.076) — one-sidedness is the contribution.
+  excess of test conformity-score mass above calibration. On the 19-feature
+  caches it holds **16/16**, mean slack +0.044, rho(coverage, -d+) = **+0.938**
+  (it was +0.985 on the 14-feature caches; adding features changed the fitted
+  quantile model). The symmetric total-variation version is now **-0.003** —
+  indistinguishable from zero, which *strengthens* the point: TV is not merely
+  weaker, it is uninformative. One-sidedness is the contribution.
+- **The blind proxy is the limiting factor, and the trivial feature wins it.**
+  `r_nominal` alone predicts coverage loss at rho **+0.740**; all 19 features
+  give +0.456 and the OTF block +0.406. Adding dimensions to a Mahalanobis
+  novelty distance makes it worse. See [docs/otf_evaluation.md](docs/otf_evaluation.md).
 - **Content-shift failure is conditional**, not universal: held-out coverage
-  ranges 0.29 (CCPs) to 0.97 (ER). But **worst-group coverage is below nominal in
-  all 16 rotations** (0.65–0.88) even where marginal coverage looks fine.
-- **Abstaining on novelty backfires** (0.474 → 0.052 as you keep only the most
+  ranges 0.20 (CCPs, RL/15) to 0.97 (ER, TV/15). But **worst-group coverage is
+  below nominal in every rotation**, and under content shift it sits at
+  **0.019–0.060** against a nominal 0.90 even where marginal coverage looks fine.
+- **Abstaining on novelty backfires** (0.521 → 0.079 as you keep only the most
   familiar inputs). The dangerous cases look familiar.
+- **The forward model is defended, with a measured limitation.** Real BioSR
+  widefield noise is Poisson in shape (R² 0.91–0.95); simulated spectra differ
+  from real by a factor ~1.9 for three structures and ~5 for CCPs. See
+  [docs/realism_check.md](docs/realism_check.md).
 
 ---
 
@@ -69,17 +82,25 @@ fuller run. If you find yourself about to write one, check the grid is complete.
 5. ~~"TV is a stronger case than RL."~~ True at 100 photons, reverses at 15.
 6. ~~"Conformal calibration collapses to 0.29 under content shift."~~ That is the
    worst of four rotations; ER gives 0.97.
+7. ~~"The OTF features help exactly where the failure is worst."~~ Nearly
+   asserted from the RL/100 cell alone, where CCPs coverage went 0.294 → 0.402.
+   The next cell reverses it: at RL/15 the same number goes 0.412 → **0.203**.
+   The block's effect on content-shift coverage is inconsistent, and only its
+   effect on the *mismatch score* is uniform (3/3 caches).
 
 **Standing rule adopted: do not characterise a result until every cell of the
-grid is in.** This pattern cost three corrections.
+grid is in.** This pattern has now cost four corrections, and caught the fifth
+before it was written down.
 
 ---
 
 ## 4. Environment traps (these have already cost time)
 
 - **RAM is 7.35 GB total.** Do not run two heavy jobs at once; a previous run was
-  OOM-killed. Check with `Get-CimInstance Win32_OperatingSystem`. Feature
-  extraction uses `--chunk` to bound memory.
+  OOM-killed. Check with `Get-CimInstance Win32_OperatingSystem`. Extraction
+  peaks at 784 MB RSS / 1.5 GB commit and already saturates all 6 physical
+  cores, so running two costs memory and buys no throughput. There is **no
+  `--chunk` flag**; memory is bounded by streaming one cell at a time.
 - **Python cannot resolve `/tmp`.** Git Bash resolves it, Python maps it to
   `C:\tmp` which does not exist. Use the session scratchpad directory or paths
   inside the repo.
@@ -116,89 +137,68 @@ grid is in.** This pattern cost three corrections.
 
 ---
 
-## 6. THE CPU WORK TO DO — in order
+## 6. THE CPU WORK — DONE
 
-Everything below runs on CPU. Nothing here needs a GPU. Run heavy steps **one at
-a time** (7.35 GB RAM).
+All of steps 1-4 below have been run. Results are in
+[docs/otf_evaluation.md](docs/otf_evaluation.md) and
+[docs/realism_check.md](docs/realism_check.md); raw output is under
+`experiments/` (gitignored, so the docs are the record).
 
-### Step 1 — Re-extract with the 19-feature set (~6 h, background)
+**Timing correction.** Step 1 took **3h41m**, not the ~6 h estimated. The "~85
+min per run" figure holds for TV (89 and 87 min) but is 3-5x too pessimistic for
+RL (29.6 and 15.5 min), because RL's cost tracks `n_iter` (75, then 30) while
+TV's is pinned by `--tv-iter 100` at every photon level.
 
-Current caches in `experiments/features/` have **14** features. The
-OTF-consistency block (5 more, added in commit 23) is implemented but **never
-evaluated**, because evaluating it needs fresh caches. This is the blocker on the
-highest-value remaining analysis.
+**Step 1 — re-extract with 19 features.** Done; all four caches in
+`experiments/features19/`. Peak RSS 784 MB, so it fits, but only one at a time:
+a single run already saturates all 6 physical cores, so parallelism costs memory
+and buys no throughput.
 
-```bash
-for ph in 100 15; do
-  python scripts/extract_features.py --photons $ph --n-iter $([ $ph = 15 ] && echo 30 || echo 75) \
-    --crop 256 --source data/biosr_gt.npz --out experiments/features19/rl_photons_$ph.npz
-  python scripts/extract_features.py --photons $ph --reconstructor tv --tv-iter 100 \
-    --tv-prox-iter 10 --crop 256 --source data/biosr_gt.npz \
-    --out experiments/features19/tv_photons_$ph.npz
-done
-```
+**Step 2 — does the OTF block improve the blind estimator? NO.** The plain
+`r_nominal` residual alone is the best blind proxy at rho **+0.740**, beating
+`otf_core` (+0.602), all 19 features (+0.456) and the OTF block (+0.406).
+Performance falls as dimension rises -- Mahalanobis dilution. The improvement
+STATUS hoped to close is **not** closed; the useful direction is a
+low-dimensional projection, not more features.
 
-Roughly 85 min per run, 4 runs. TV cost does **not** scale with photon level
-(fixed `--tv-iter`), unlike RL where `n_iter` does.
+**Step 3 — gates on 19-feature caches.** Two of three results are good and one
+is not:
+- The mismatch score's off-distribution correlation with the oracle improves in
+  3/3 caches (+0.466->+0.544, +0.645->+0.672, +0.444->+0.664).
+- Content-shift coverage is **inconsistent**: CCPs held out goes 0.294->0.402
+  and 0.381->0.462, but **0.412->0.203** at RL/15. Do not claim the OTF block
+  repairs content shift.
+- Worst-group coverage under content shift stays at 0.019-0.060 everywhere.
 
-### Step 2 — Does the OTF block improve the blind estimator? (instant)
+**Step 4 — forward-model realism.** Written as `scripts/realism_check.py`, run
+over 44 (cell, level) pairs. Real BioSR widefield noise is Poisson **in shape**
+(free-fit R2 0.91-0.95) with gain 1.08-1.29, stable under filtering. Spectral
+shape differs from simulation by a factor ~1.9 for three structures and ~5 for
+CCPs. D2 is defended with a measured limitation attached rather than assumed.
 
-This is the single highest-value analysis left. The coverage bound (Gate 5) is
-tight at rho 0.985 but needs labels; the **blind proxy is only rho 0.615**, and
-that is what limits the contribution. The OTF features are physics-derived and
-built to detect operator mismatch from the residual spectrum alone.
+Two traps found there, both now guarded and tested: **BioSR's raw-frame ordering
+is not consistent across structures** (CCPs orientation-slow; the other three
+phase-slow), and the per-orientation difference is not pure noise because the
+illumination envelopes differ, which requires estimating noise only above the
+OTF cutoff.
 
-```bash
-python scripts/gate5_bound.py --features experiments/features19/*.npz --out experiments/gate5/bound19.json
-```
+### Correctness fix applied
 
-Then extend `novelty()` in `scripts/gate5_bound.py` to use only the OTF block
-(`otf_white_chi2, otf_excess_inband, otf_excess_at_cut, otf_slope, otf_noise_ref`)
-and compare its `rho(coverage, -blind)` against the full-feature Mahalanobis.
-**If the OTF block wins, that closes improvements #1 and #2 into one result:** a
-near-tight bound plus a physics-derived blind estimator of it.
+`spearman` was duplicated in four scripts and ranked with
+`argsort(argsort(x))`, which is only a rank when values are distinct. Against a
+constant it returned **+1.0**. `rms` takes five distinct values, so every
+correlation reported against it ran on tied data. Now one tie-corrected
+implementation in `src/metrics/stats.py`, verified against scipy. Gate 4's rho
+moves +0.836 -> +0.864; **Gate 5's headline is unaffected**.
 
-### Step 3 — Re-run the gates on 19-feature caches (instant)
+### Step 5 — self-supervised calibration (~1 day, needs new code)
 
-```bash
-python scripts/gate4_calibration.py --features experiments/features19/rl_photons_100.npz
-python scripts/gate4b_repair.py    --features experiments/features19/rl_photons_100.npz
-python scripts/rotate_structures.py --features experiments/features19/rl_photons_100.npz
-```
-
-Confirms the OTF features do not *hurt*, and refreshes every headline number.
-
-### Step 4 — Forward-model realism check (~2 h, needs new code)
-
-Defends **decision D2**, the most attackable design choice: BioSR's ground truth
-is itself a SIM reconstruction, so are our simulated measurements realistic?
-
-BioSR ships the **raw SIM frames** — `RawSIMData_level_01..09.mrc`, 9 frames per
-level, 502x502, already on disk. Averaging the 9 gives a **real widefield
-measurement** at a **real signal level**, paired with the exact ground truth the
-error metric uses.
-
-Write `scripts/realism_check.py` to, for several cells and signal levels:
-1. read `RawSIMData_level_NN.mrc`, average the 9 frames → real widefield `y_real`
-2. simulate `y_sim` from the paired `SIM_gt` at the matched photon level
-3. compare radial power spectra, noise variance versus mean (should follow
-   Poisson), and residual whiteness
-
-Use `src/data/mrc.read_mrc`. Note raw frames are at **62.6 nm** while GT is at
-**31.3 nm** — a factor of 2, so downsample the object or upsample the measurement
-before comparing. Getting this wrong is the same 2x trap as section 5.
-
-### Step 5 — Self-supervised calibration (~1 day, needs new code)
-
-The remaining improvement. Calibrate from the observed data itself so shift
-cannot bite. Now has a much sharper objective than when first proposed:
-**estimate or control `d+` without labels.** Reference: Aldridge, Liaudat,
-Pereyra & McEwen, arXiv:2605.18655 (equivariant bootstrapping).
-
-Target: content shift, where inflation, Mondrian and RLCP all failed and where
-CCPs coverage sits at 0.29–0.48.
-
----
+The remaining improvement, and now the main one. Calibrate from the observed
+data itself so shift cannot bite. Sharper objective than when first proposed:
+**estimate or control `d+` without labels.** Step 2 says the blind proxy tops out
+at +0.740 from a single trivial feature, so this is where the headroom is.
+Reference: Aldridge, Liaudat, Pereyra & McEwen, arXiv:2605.18655 (equivariant
+bootstrapping). Target content shift, where CCPs coverage sits at 0.20-0.48.
 
 ## 7. What needs a GPU (NOT part of the CPU loop)
 

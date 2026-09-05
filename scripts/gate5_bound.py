@@ -38,6 +38,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from src.metrics.stats import spearman  # noqa: E402
 from scripts.rotate_structures import load_flat, partition  # noqa: E402
 
 
@@ -87,24 +88,77 @@ def ks_distance(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.abs(fa - fb).max())
 
 
-def novelty(X_ref: np.ndarray, X: np.ndarray) -> np.ndarray:
+def novelty(X_ref: np.ndarray, X: np.ndarray, cols=None) -> np.ndarray:
+    """Mahalanobis novelty of ``X`` against the reference cloud ``X_ref``.
+
+    ``cols`` restricts the computation to a block of feature columns. That turns
+    one blind score into a family of them, which is the point: the OTF block is
+    physics-derived and built to detect operator mismatch from the residual
+    spectrum alone, so it should predict coverage loss better than a generic
+    distance over all 19 features, several of which merely track content.
+    """
+    if cols is not None:
+        X_ref, X = X_ref[:, cols], X[:, cols]
     mu, sd = X_ref.mean(0), X_ref.std(0) + 1e-8
     Zr, Z = (X_ref - mu) / sd, (X - mu) / sd
-    prec = np.linalg.inv(np.cov(Zr, rowvar=False) + 1e-3 * np.eye(Zr.shape[1]))
+    # np.cov collapses to a scalar for one column; atleast_2d keeps inv valid.
+    cov = np.atleast_2d(np.cov(Zr, rowvar=False))
+    prec = np.linalg.inv(cov + 1e-3 * np.eye(cov.shape[0]))
     return np.sqrt(np.maximum(np.einsum("ij,jk,ik->i", Z, prec, Z), 0.0))
 
 
-def spearman(a, b):
-    ra = np.argsort(np.argsort(a)).astype(float)
-    rb = np.argsort(np.argsort(b)).astype(float)
-    ra -= ra.mean(); rb -= rb.mean()
-    d = np.sqrt((ra**2).sum() * (rb**2).sum())
-    return float((ra * rb).sum() / d) if d > 0 else 0.0
+# Which columns each blind estimator is allowed to see. "otf" is the block added
+# in commit 23 and never evaluated until now; "residual" is the Gate 2 baseline.
+BLOCK_SPECS = {
+    "all": None,
+    "otf": ("otf_white_chi2", "otf_excess_inband", "otf_excess_at_cut",
+            "otf_slope", "otf_noise_ref"),
+    "oscr": "complement-of-otf",
+    "residual": ("r_nominal",),
+    # A sub-block dropping the two OTF features that carry no mismatch signal.
+    # Measured against the oracle RMS wavefront error on the RL 100-photon
+    # cache, otf_slope reaches |rho| 0.77 and otf_excess_at_cut 0.68, while
+    # otf_excess_inband and otf_noise_ref sit below 0.09 everywhere. Two dead
+    # directions dilute a 5-feature Mahalanobis distance, so this asks whether
+    # the block does better without them.
+    #
+    # CAVEAT, and it matters: those two were identified by their correlation
+    # with the oracle, so "otf_core" is selected on the label and its score
+    # here is optimistic. It is a hypothesis to be confirmed on the GPU caches,
+    # not a result to quote. The a-priori reading that motivates it is that
+    # otf_noise_ref is the out-of-band *normaliser* (it tracks the photon
+    # budget, not the operator) and otf_excess_inband is driven by specimen
+    # content -- neither is a mismatch discriminator by construction.
+    "otf_core": ("otf_white_chi2", "otf_excess_at_cut", "otf_slope"),
+}
 
 
-def run_cell(pool, held_out, alpha, seed=0):
+def feature_blocks(names: list[str]) -> dict[str, np.ndarray]:
+    """Resolve :data:`BLOCK_SPECS` against the cache's own feature names.
+
+    Blocks whose features are absent are dropped rather than faked, so a
+    14-feature cache silently reports only the blocks it can support.
+    """
+    pos = {n: i for i, n in enumerate(names)}
+    otf = [pos[n] for n in BLOCK_SPECS["otf"] if n in pos]
+    out: dict[str, np.ndarray] = {"all": np.arange(len(names))}
+    if otf:
+        out["otf"] = np.asarray(otf)
+        out["oscr"] = np.asarray([i for i in range(len(names)) if i not in set(otf)])
+        core = [pos[n] for n in BLOCK_SPECS["otf_core"] if n in pos]
+        if len(core) == len(BLOCK_SPECS["otf_core"]):
+            out["otf_core"] = np.asarray(core)
+    res = [pos[n] for n in BLOCK_SPECS["residual"] if n in pos]
+    if res:
+        out["residual"] = np.asarray(res)
+    return out
+
+
+def run_cell(pool, held_out, alpha, seed=0, blocks=None):
     from sklearn.ensemble import GradientBoostingRegressor
 
+    if blocks is None:
+        blocks = feature_blocks(pool["feature_names"])
     idx = partition(pool, held_out, seed=seed)
     X, e = pool["X"], pool["e"]
     q = GradientBoostingRegressor(loss="quantile", alpha=1 - alpha, n_estimators=300,
@@ -125,10 +179,22 @@ def run_cell(pool, held_out, alpha, seed=0):
         tv = tv_distance(s_cal, s)
         ks = ks_distance(s_cal, s)
         dplus = directional_excess(s_cal, s)
-        # Label-free proxy: divergence of the novelty distributions.
+        # Label-free proxy: divergence of the novelty distributions. Computed
+        # once per feature block so the blocks can be compared on equal footing
+        # -- same partition, same fitted quantile model, same realised coverage.
+        blind = {}
+        for name, cols in blocks.items():
+            nv_cal = novelty(X[idx["cal"]], X[idx["cal"]], cols)
+            nv_tst = novelty(X[idx["cal"]], X[sel], cols)
+            blind[name] = {
+                "tv": tv_distance(nv_cal, nv_tst),
+                "d_plus": directional_excess(nv_cal, nv_tst),
+                "ks": ks_distance(nv_cal, nv_tst),
+            }
         nv_cal = novelty(X[idx["cal"]], X[idx["cal"]])
         nv_tst = novelty(X[idx["cal"]], X[sel])
         out[split] = {
+            "blind_blocks": blind,
             "coverage": cov,
             "tv_score": tv,
             "ks_score": ks,
@@ -158,11 +224,18 @@ def main() -> None:
     print()
     print(f"  {'config':22s} {'held out':14s} {'cov':>6s} {'d_TV':>6s} {'d+':>6s} "
           f"{'bound1s':>8s} {'slack1s':>8s} {'blind d+':>9s}")
+    block_names: list[str] = []
+    nfeat: dict[str, int] = {}
     for path in args.features:
         pool = load_flat(path)
+        blocks = feature_blocks(pool["feature_names"])
+        for b, cols in blocks.items():
+            if b not in block_names:
+                block_names.append(b)
+            nfeat[b] = len(cols)
         tag = Path(path).stem
         for s in sorted(set(pool["structure"])):
-            r = run_cell(pool, s, args.alpha)["ood"]
+            r = run_cell(pool, s, args.alpha, blocks=blocks)["ood"]
             results.setdefault(tag, {})[s] = r
             rows.append(r)
             ok = "" if r["slack_1s"] >= 0 else "   <- BOUND VIOLATED"
@@ -194,13 +267,60 @@ def main() -> None:
     print(f"    rho(coverage, -blind d+)   = {spearman(cov, -blind_dp):+.3f}")
     print(f"    rho(d+, blind d+)          = {spearman(dp, blind_dp):+.3f}")
     print()
+    print("  Which BLOCK of features makes the best blind estimator?")
+    print("  The labelled bound is tight; the blind proxy is what limits the")
+    print("  contribution, so this is the number that matters.")
+    print()
+    # n_cells matters: caches predating commit 23 carry no OTF block, so a block
+    # can be supported by only part of the grid. Reporting rho over 4 cells as if
+    # it were over 16 is exactly the error the standing rule forbids.
+    print(f"    {'block':10s} {'n_feat':>6s} {'cells':>6s} {'rho(cov,-blind d+)':>20s} "
+          f"{'rho(cov,-blind dTV)':>21s} {'rho(d+,blind d+)':>18s}")
+    block_stats = {}
+    for name in block_names:
+        got = [r for r in rows if name in r.get("blind_blocks", {})]
+        if len(got) < 3:
+            continue
+        c = np.array([r["coverage"] for r in got])
+        d = np.array([r["d_plus"] for r in got])
+        bdp = np.array([r["blind_blocks"][name]["d_plus"] for r in got])
+        btv = np.array([r["blind_blocks"][name]["tv"] for r in got])
+        st = {
+            "n_cells": len(got),
+            "n_features": int(nfeat.get(name, 0)),
+            "rho_cov_dplus": spearman(c, -bdp),
+            "rho_cov_tv": spearman(c, -btv),
+            "rho_dplus_dplus": spearman(d, bdp),
+        }
+        block_stats[name] = st
+        warn = "" if st["n_cells"] == len(rows) else "   <- PARTIAL GRID"
+        print(f"    {name:10s} {st['n_features']:6d} {st['n_cells']:6d} "
+              f"{st['rho_cov_dplus']:+20.3f} {st['rho_cov_tv']:+21.3f} "
+              f"{st['rho_dplus_dplus']:+18.3f}{warn}")
+    print()
+    full = {k: v for k, v in block_stats.items() if v["n_cells"] == len(rows)}
+    if full:
+        best = max(full, key=lambda k: full[k]["rho_cov_dplus"])
+        block_stats_full = full
+        ref = full.get("all", {}).get("rho_cov_dplus")
+        msg = f"    best blind block: {best!r} at rho {full[best]['rho_cov_dplus']:+.3f}"
+        if ref is not None and best != "all":
+            msg += f"  (vs {ref:+.3f} for the full feature set)"
+        print(msg)
+        partial = [k for k in block_stats if k not in full]
+        if partial:
+            print(f"    NOT ranked -- only part of the grid supports them: "
+                  f"{', '.join(sorted(partial))}")
+    print()
     print("  The first says the bound is the right explanation; the second and third")
     print("  say whether a practitioner could see the danger coming at deployment,")
     print("  with no ground truth, which is the only version that is actually usable.")
 
     if args.out:
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-        Path(args.out).write_text(json.dumps(results, indent=2), encoding="utf-8")
+        payload = {"cells": results, "blind_blocks": block_stats,
+                   "alpha": args.alpha}
+        Path(args.out).write_text(json.dumps(payload, indent=2), encoding="utf-8")
         print(f"\n  wrote {args.out}")
 
 
