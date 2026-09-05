@@ -27,10 +27,48 @@ Companion paper: Qiao et al., *Evaluation and development of deep neural network
 for image super-resolution in optical microscopy*, Nature Methods 18, 194-202
 (2021), doi:10.1038/s41592-020-01048-5. Code: https://github.com/qc17-THU/DL-SR.
 
-> **Unverified:** NA, emission wavelengths and camera pixel size are quoted from
-> secondary sources only (the Nature Methods methods section is paywalled). The
-> commonly cited 62.6 nm pixel is the current `PupilConfig` default but **must be
-> confirmed before any published result**.
+**Acquisition parameters -- now VERIFIED** from the Methods of Qiao et al. and
+cross-checked against the MRC headers in the archives themselves:
+
+| Parameter | Value | Source |
+|---|---|---|
+| Objective NA | **1.7** | Olympus APON100XHOTIRF, stated in Methods |
+| Excitation | 405 / 488 / 560 nm | Methods |
+| Camera | Hamamatsu Orca Flash 4.0 v3 sCMOS | Methods |
+| Photon conversion | 0.6026 photons per count | Methods |
+| **GT-SIM pixel** | **0.0313 um (31.3 nm)** | MRC header of `SIM_gt.mrc` |
+| **Raw / widefield pixel** | **0.0626 um (62.6 nm)** | MRC header of `RawSIMData_*.mrc` |
+| GT-SIM image size | 1004 x 1004 | MRC header |
+| Raw SIM stack | 502 x 502 x **9** frames | MRC header, 3 phases x 3 orientations |
+
+> **Correction worth remembering.** The widely quoted "62.6 nm BioSR pixel" is the
+> **widefield** pixel. The SIM ground truth is 2x upsampled, so the objects this
+> project uses are at **31.3 nm**. Applying the widefield value to
+> SIM-resolution objects understates every spatial frequency by a factor of two.
+> Three independent estimates agree: 31.3 nm from MRC metadata (definitive),
+> 32.5 nm from camera pixel over magnification, and 29.3 nm inferred from the
+> measured spectral band edge of the objects.
+
+At the true optics the widefield OTF cutoff is **0.2027 cyc/px** on the SIM grid,
+leaving **9.05%** of object energy in the operator's null space, with a measured
+SIM gain of 1.87x against the theoretical 2x.
+
+### Archive layout
+
+```text
+<Structure>/GT_all.mrc
+<Structure>/Cell_XXX/SIM_gt.mrc                    # 1004x1004, the object x
+<Structure>/Cell_XXX/RawSIMData_gt.mrc             # raw frames at GT illumination
+<Structure>/Cell_XXX/RawSIMData_level_01..09.mrc   # 502x502x9 per signal level
+```
+
+Organised **by cell**, which is exactly the unit that train/calibration/test
+splits must be blocked on to avoid leakage. The raw SIM frames are included, so a
+*real* widefield measurement can be formed by averaging the nine frames, as the
+paper does, and compared against the simulated forward model -- a realism check
+the preprocessed subset could not support.
+
+Read them with `src/data/mrc.py` (dependency-free; `mrcfile` is not required).
 
 Extensions: BioSR+ ([Zenodo 7115540](https://zenodo.org/records/7115540)),
 BioTISR ([Zenodo 13984825](https://zenodo.org/records/13984825)).
