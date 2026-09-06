@@ -36,6 +36,7 @@ BioSR data (228 cells, 4 structures). No GPU has been used yet.
 | 5 | Can coverage loss be bounded? | **PASS — one-sided bound, rho 0.938, holds 16/16** |
 | 6 | Does the OTF block beat it blind? | FAILED — but so does the residual once the background is realistic |
 | 7 | Does the layer transfer to REAL measurements? | **FAILED — coverage 0.15–0.55 vs 0.90. The bound still holds** |
+| 8 | Does a reconstructor with NO fidelity term break the mechanism? | **PASS — U-Net matches RL to 3 d.p. The scope holds** |
 
 Headline results, all reproducible from cached features:
 
@@ -254,6 +255,39 @@ data itself so shift cannot bite. Sharper objective than when first proposed:
 at +0.740 from a single trivial feature, so this is where the headroom is.
 Reference: Aldridge, Liaudat, Pereyra & McEwen, arXiv:2605.18655 (equivariant
 bootstrapping). Target content shift, where CCPs coverage sits at 0.20-0.48.
+
+## 6b. The GPU session — DONE
+
+One A100 session, **14 min** for the first pass and ~45 min for the properly
+scaled one, against the "3-4 h on a T4, ~1 h on an A100" this file predicted.
+Both models trained at `--haze-frac 0.31`, 32 patches per cell, 60 epochs;
+val SSIM 0.9245 (U-Net) and 0.8888 (unrolled). Caches are in
+`experiments/features19/*_haze31.npz`. Full results:
+[docs/gpu_reconstructors.md](docs/gpu_reconstructors.md).
+
+**The decisive experiment passed.** The U-Net has no data-fidelity term and its
+blind features match Richardson-Lucy's to three decimal places (`r_nominal`
++0.727 both). The mechanism is a property of the inverse problem, not of
+fidelity-based reconstructors, so the paper's scope does not narrow. The U-Net
+is also the best reconstructor of the four (mean error 0.280).
+
+**The unrolled net is the mechanism's extreme case.** Its explicit, optimised
+fidelity term against the *nominal* PSF drives `r_nominal` blind (+0.168 against
+RL's +0.727) and flips `r_min`'s sign -- and `r_gap` more than doubles to +0.860
+while `otf_slope` reaches +0.868, the highest of any reconstructor. Gate 3's
+claim demonstrated at the limit: the operator profile earns most exactly where
+the plain residual is most blind. Its -0.159 gate-4 score is a property of
+fitting a score whose inputs change sign between splits, not a physics failure.
+
+**Two notes for anyone re-running it.** Training scale was 8 patches per cell
+and 30 epochs by default -- 832 patches, under 3 min, against RL's full 75
+iterations. That rigged the comparison against the networks and the unrolled net
+visibly overfitted (val SSIM peaked epoch 11, fell 0.8675 -> 0.8296). At 32 per
+cell it climbs monotonically to 0.8888, so it was data starvation, not
+architecture. And `otf_excess_at_cut` is unexplained for the U-Net: -0.178
+in-distribution but -0.824 off-distribution, best of the four.
+
+---
 
 ## 7. What needs a GPU (NOT part of the CPU loop)
 
