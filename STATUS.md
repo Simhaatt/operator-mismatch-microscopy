@@ -34,7 +34,7 @@ BioSR data (228 cells, 4 structures). No GPU has been used yet.
 | 4 | Does shift-aware calibration repair coverage? | FAILED, diagnosed |
 | 4b | Does the diagnosis suggest a fix? | PARTIAL — operator shift yes, content shift no |
 | 5 | Can coverage loss be bounded? | **PASS — one-sided bound, rho 0.938, holds 16/16** |
-| 6 | Does the OTF block beat it blind? | **FAILED — the plain residual wins (0.728 vs 0.352)** |
+| 6 | Does the OTF block beat it blind? | FAILED — but so does the residual once the background is realistic |
 | 7 | Does the layer transfer to REAL measurements? | **FAILED — coverage 0.15–0.55 vs 0.90. The bound still holds** |
 
 Headline results, all reproducible from cached features:
@@ -97,8 +97,21 @@ fuller run. If you find yourself about to write one, check the grid is complete.
    over ten -- last place. It was selected on the oracle, and this is what that
    costs.
 
+10. ~~"The plain residual is the best blind estimator."~~ True only at the
+   unrealistic 5% background. At the observed 31% it **changes sign**, +0.604
+   to -0.398, from joint best to active anti-predictor, while `qpred` (the
+   model's own predicted quantile) leads at +0.716. The real data agrees with
+   the realistic setting: `rho(r_nominal, true error)` is -0.098 to -0.663 on
+   real measurements. The deployable signal is *learned*, not hand-crafted.
+
 **Standing rule adopted: do not characterise a result until every cell of the
-grid is in.** This pattern has now cost six corrections.
+grid is in.** This pattern has now cost seven corrections.
+
+**Third standing rule: state the background fraction with any blind-estimator
+result.** The ranking inverts between 5% and 31% haze, so a result quoted
+without it is not interpretable. Haze is a *fraction* of the measurement, so
+`--background` must scale with `--photons` (0.45x holds it at the observed 31%);
+a flat 45 is correct at 100 photons and 75% -- out of range -- at 15.
 
 **Second standing rule: report every number over >= 10 partition seeds.**
 Conformal coverage is split-sensitive; single-seed differences of up to 0.2 on

@@ -202,3 +202,62 @@ shift and subtracting it destroys the signal rather than sharpening it.
 seeds, remains the best available deployment-time warning.** That is a firmer
 negative than the single-seed version, and it is what makes self-supervised
 calibration the right next step rather than more feature engineering.
+
+---
+
+## 5. The blind-estimator ranking is an artefact of the forward model
+
+Section 4 concluded that the plain `r_nominal` residual is the best blind
+estimator, at +0.728 ± 0.049, having beaten five alternatives over ten seeds.
+**That conclusion does not survive a realistic forward model.**
+
+[sim2real.md](sim2real.md) established that real BioSR widefield carries 19-68%
+of its mean as out-of-focus light (median 31%) against the 5% these caches were
+built with. Re-extracting at a realistic background and comparing at a **matched
+photon level** -- 100 photons, both reconstructors, 8 cells, 10 seeds, where
+`background=45` gives exactly the observed median 31%:
+
+| blind estimator | 5% haze | 31% haze |
+|---|---|---|
+| `qpred` (the model's predicted quantile) | +0.613 ± 0.091 | **+0.716 ± 0.083** |
+| `blind_score` (`z(r) − z(q)`) | −0.280 ± 0.216 | **+0.635 ± 0.065** |
+| `all` (19 features) | +0.347 ± 0.085 | +0.492 ± 0.075 |
+| `oscr` (14) | +0.344 ± 0.058 | +0.407 ± 0.081 |
+| `otf_core` (3) | +0.328 ± 0.090 | +0.314 ± 0.064 |
+| `otf` (5) | +0.430 ± 0.143 | +0.244 ± 0.060 |
+| `residual` (`r_nominal`) | **+0.604 ± 0.081** | **−0.398 ± 0.100** |
+
+The residual does not merely lose its lead, it **changes sign**: from the joint
+best predictor of coverage loss to an active anti-predictor. `blind_score`
+flips the other way, −0.280 to +0.635. `qpred` and `blind_score` are
+statistically tied at the top (gap +0.082, pooled sd 0.105).
+
+The mechanism is straightforward. `r_nominal` is a *relative* residual, so a
+flat pedestal carrying no information about operator mismatch inflates its
+denominator and dilutes the signal. At 31% haze the dilution is enough to
+invert the relationship. The two winners are both built on the fitted quantile
+model, which learns around the pedestal.
+
+**The real data agrees with the realistic model, not the clean one.** On real
+measurements `rho(r_nominal, true error)` is −0.098 to −0.663
+([sim2real.md](sim2real.md)) -- anti-correlated, exactly as the 31%-haze
+simulation predicts and exactly opposite to what the 5% simulation predicts.
+That is independent evidence that the realistic background is the right setting
+and that this reversal is a property of the physics rather than of the sweep.
+
+So the deployable warning signal is the **model's own predicted quantile**, not
+the measurement residual. This matters more than the OTF question it was raised
+to answer: it says the blind estimator must be *learned*, because the one
+hand-crafted quantity that looked sufficient was sufficient only under a
+forward model too clean to be real.
+
+### Caveat on the sweep itself
+
+`--background 45` was applied at both photon levels, which is right at 100
+photons (45/145 = 31%) and **wrong at 15** (45/60 = 75%, outside the observed
+range). That mis-specification collapsed the RL/15 mismatch correlation to
+−0.151, which is an artefact of the choice and not a result. Haze is a fraction
+of the measurement, so the background has to scale with the photon budget;
+`0.45 × photons` holds the fraction at 31%. The comparison above therefore uses
+the 100-photon caches only, where the fraction is correct, and the 15-photon
+level is being re-extracted at `background=6.75`.
