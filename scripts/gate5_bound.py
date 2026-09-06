@@ -159,6 +159,7 @@ def run_cell(pool, held_out, alpha, seed=0, blocks=None):
 
     if blocks is None:
         blocks = feature_blocks(pool["feature_names"])
+    feature_index = {n: i for i, n in enumerate(pool["feature_names"])}
     idx = partition(pool, held_out, seed=seed)
     X, e = pool["X"], pool["e"]
     q = GradientBoostingRegressor(loss="quantile", alpha=1 - alpha, n_estimators=300,
@@ -183,6 +184,48 @@ def run_cell(pool, held_out, alpha, seed=0, blocks=None):
         # once per feature block so the blocks can be compared on equal footing
         # -- same partition, same fitted quantile model, same realised coverage.
         blind = {}
+        # The model's OWN predicted quantile, as a blind statistic. Step 2
+        # showed that piling features into a Mahalanobis novelty distance makes
+        # the blind proxy worse, so the useful direction is a *low-dimensional*
+        # statistic rather than more features. q.predict(X) is the natural one:
+        # it is one number, it needs no labels at deployment, and it is already
+        # trained to track the error the bound is about -- where a novelty
+        # distance only measures how unusual the input looks, which Gate 4b
+        # showed is the wrong question ("the dangerous cases look familiar").
+        # Direction matters and is fixed a priori by the mechanism, not fitted:
+        # under-coverage comes from intervals that are too NARROW, so the danger
+        # signal is the predicted quantile shifting DOWN relative to
+        # calibration, not up. A shift up widens the intervals and coverage
+        # rises. Taking the excess the other way round gives a statistic that is
+        # anti-correlated with coverage by construction, which is what the
+        # first run of this showed (-0.800).
+        qp_cal, qp = q.predict(X[idx["cal"]]), q.predict(X[sel])
+        blind["qpred"] = {"tv": tv_distance(qp_cal, qp),
+                          "d_plus": directional_excess(qp, qp_cal),
+                          "ks": ks_distance(qp_cal, qp)}
+        # A blind stand-in for the conformity score itself. The real score is
+        # s = e - q(x), and only e needs a label. r_nominal is the measurement
+        # residual under the assumed operator -- the one quantity that is both
+        # observable at deployment and monotone in error. Standardising both on
+        # the CALIBRATION split (never on test, which would leak) puts them on a
+        # common scale so the difference is meaningful:
+        #
+        #     s_blind = z(r_nominal) - z(q(x))
+        #
+        # This is the natural construction rather than a search: it mirrors the
+        # labelled score term for term. Whether it beats r_nominal alone is the
+        # open question -- subtracting q could either remove the part of the
+        # residual the model already anticipates, or just add the model's noise.
+        ri = feature_index.get("r_nominal")
+        if ri is not None:
+            r_cal, r_tst = X[idx["cal"]][:, ri], X[sel][:, ri]
+            mu_r, sd_r = r_cal.mean(), r_cal.std() + 1e-12
+            mu_q, sd_q = qp_cal.mean(), qp_cal.std() + 1e-12
+            sb_cal = (r_cal - mu_r) / sd_r - (qp_cal - mu_q) / sd_q
+            sb_tst = (r_tst - mu_r) / sd_r - (qp - mu_q) / sd_q
+            blind["blind_score"] = {"tv": tv_distance(sb_cal, sb_tst),
+                                    "d_plus": directional_excess(sb_cal, sb_tst),
+                                    "ks": ks_distance(sb_cal, sb_tst)}
         for name, cols in blocks.items():
             nv_cal = novelty(X[idx["cal"]], X[idx["cal"]], cols)
             nv_tst = novelty(X[idx["cal"]], X[sel], cols)
@@ -211,10 +254,56 @@ def run_cell(pool, held_out, alpha, seed=0, blocks=None):
     return out
 
 
+def collect_rows(features, alpha, seed):
+    """Every (cache, held-out structure) cell for one partition seed."""
+    rows, block_names, nfeat = [], [], {}
+    for path in features:
+        pool = load_flat(path)
+        blocks = feature_blocks(pool["feature_names"])
+        for b, cols in blocks.items():
+            if b not in block_names:
+                block_names.append(b)
+            nfeat[b] = len(cols)
+        for extra in ("qpred", "blind_score"):
+            if extra not in block_names:
+                block_names.append(extra)
+        tag = Path(path).stem
+        for st in sorted(set(pool["structure"])):
+            r = run_cell(pool, st, alpha, seed=seed, blocks=blocks)["ood"]
+            r = dict(r, tag=tag, structure=st)
+            rows.append(r)
+    return rows, block_names, nfeat
+
+
+def key_stats(rows, block_names):
+    """The handful of numbers the paper quotes, for one seed."""
+    g = lambda k: np.array([r[k] for r in rows])
+    cov, dp, tv = g("coverage"), g("d_plus"), g("tv_score")
+    out = {
+        "rho_cov_dplus": spearman(cov, -dp),
+        "rho_cov_tv": spearman(cov, -tv),
+        "holds_1s": int((g("slack_1s") >= 0).sum()),
+        "n_cells": len(rows),
+        "mean_slack_1s": float(g("slack_1s").mean()),
+    }
+    for name in block_names:
+        got = [r for r in rows if name in r.get("blind_blocks", {})]
+        if len(got) == len(rows):
+            c = np.array([r["coverage"] for r in got])
+            b = np.array([r["blind_blocks"][name]["d_plus"] for r in got])
+            out[f"blind_{name}"] = spearman(c, -b)
+    return out
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--features", nargs="+", required=True)
     ap.add_argument("--alpha", type=float, default=0.1)
+    ap.add_argument("--seeds", type=int, default=1,
+                    help="number of partition seeds, 0..N-1. Seed 0 alone is "
+                         "one split; conformal coverage is split-sensitive, so "
+                         "more than one is what separates a result from an "
+                         "anecdote.")
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
     target = 1 - args.alpha
@@ -233,6 +322,9 @@ def main() -> None:
             if b not in block_names:
                 block_names.append(b)
             nfeat[b] = len(cols)
+        for extra in ("qpred", "blind_score"):
+            if extra not in block_names:
+                block_names.append(extra)
         tag = Path(path).stem
         for s in sorted(set(pool["structure"])):
             r = run_cell(pool, s, args.alpha, blocks=blocks)["ood"]
@@ -316,10 +408,51 @@ def main() -> None:
     print("  say whether a practitioner could see the danger coming at deployment,")
     print("  with no ground truth, which is the only version that is actually usable.")
 
+    seed_stats = None
+    if args.seeds > 1:
+        per_seed = [key_stats(rows, block_names)]
+        for k in range(1, args.seeds):
+            rk, bnk, _ = collect_rows(args.features, args.alpha, k)
+            per_seed.append(key_stats(rk, bnk))
+        keys = [k for k in per_seed[0] if k not in ("n_cells",)]
+        seed_stats = {k: (float(np.mean([p[k] for p in per_seed if k in p])),
+                          float(np.std([p[k] for p in per_seed if k in p])),
+                          int(sum(1 for p in per_seed if k in p)))
+                      for k in keys}
+        print()
+        print(f"  ACROSS {args.seeds} PARTITION SEEDS  (mean +- sd)")
+        print("  Every number above is one split. These are the same quantities")
+        print("  recomputed on independent cell-blocked partitions, which is the")
+        print("  only way to tell a finding from a lucky draw.")
+        print()
+        for k in ("rho_cov_dplus", "rho_cov_tv"):
+            m, sd, n = seed_stats[k]
+            print(f"    {k:22s} {m:+.3f} +- {sd:.3f}   (n={n})")
+        print(f"    {'holds_1s':22s} {seed_stats['holds_1s'][0]:.1f} +- "
+              f"{seed_stats['holds_1s'][1]:.1f} of {len(rows)}")
+        print(f"    {'mean_slack_1s':22s} {seed_stats['mean_slack_1s'][0]:+.3f} +- "
+              f"{seed_stats['mean_slack_1s'][1]:.3f}")
+        print()
+        blinds = sorted((k for k in seed_stats if k.startswith("blind_")),
+                        key=lambda k: -seed_stats[k][0])
+        for k in blinds:
+            m, sd, n = seed_stats[k]
+            print(f"    {k:22s} {m:+.3f} +- {sd:.3f}")
+        if len(blinds) >= 2:
+            (m0, s0, _), (m1, s1, _) = seed_stats[blinds[0]], seed_stats[blinds[1]]
+            gap = m0 - m1
+            pooled = float(np.hypot(s0, s1))
+            verdict = ("clear of the seed noise" if gap > 2 * pooled
+                       else "NOT separated from seed noise")
+            print()
+            print(f"    best {blinds[0][6:]!r} leads {blinds[1][6:]!r} by {gap:+.3f}, "
+                  f"pooled sd {pooled:.3f} -- {verdict}")
+
     if args.out:
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)
         payload = {"cells": results, "blind_blocks": block_stats,
-                   "alpha": args.alpha}
+                   "alpha": args.alpha, "seeds": args.seeds,
+                   "across_seeds": seed_stats}
         Path(args.out).write_text(json.dumps(payload, indent=2), encoding="utf-8")
         print(f"\n  wrote {args.out}")
 

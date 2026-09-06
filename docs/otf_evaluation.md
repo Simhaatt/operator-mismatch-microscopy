@@ -119,3 +119,86 @@ hypothesis for the GPU caches, not a result.
   contribution: TV is not merely weaker, it is uninformative.
 * The blind proxy remains the limiting factor, at +0.740 rather than the +0.615
   previously recorded. Better than thought, but from the trivial feature.
+
+---
+
+## 4. Across ten partition seeds — two of the above are wrong
+
+Everything above, and everything in the project before it, was computed on a
+**single** cell-blocked partition (`seed=0`). Conformal coverage is
+split-sensitive, so that was never enough. Repeating on ten independent seeds:
+
+### The content-shift story survives
+
+Spread **across seeds** is 0.024-0.037; spread **across structures** is
+0.200-0.252. Structure-to-structure variation is roughly **7x** larger than
+partition noise, so content shift is a real effect and not a lucky draw.
+In-distribution coverage is 0.902-0.917 on every cache.
+
+### But the OTF coverage comparison was noise, in both directions
+
+CCPs held out -- the worst cell, and the one section 2 above drew conclusions
+from:
+
+| cache | 14 features | 19 features | difference | pooled sd |
+|---|---|---|---|---|
+| RL, 100 photons | 0.353 ± 0.076 | 0.388 ± 0.107 | +0.035 | 0.131 |
+| RL, 15 photons | 0.440 ± 0.046 | 0.429 ± 0.090 | −0.011 | 0.101 |
+| TV, 100 photons | 0.328 ± 0.064 | 0.380 ± 0.089 | +0.052 | 0.110 |
+
+Every difference is well inside the seed noise. **The OTF block has no
+detectable effect on content-shift coverage, in either direction.** Section 2's
+"two improve, one degrades" was reading partition noise -- the single seed that
+produced 0.203 at RL/15 is an outlier against a ten-seed mean of 0.429, and the
+single seed that produced 0.294 at RL/100 is an outlier against 0.353.
+
+Note what this does to the earlier retraction: the *original* claim was wrong,
+and the *retraction of it* was wrong too. Both were single-seed readings. The
+correct statement is that the comparison is null.
+
+The one OTF result that does survive is section 1's -- the mismatch score's
+correlation with the oracle improves in 3/3 caches -- because that is measured
+over thousands of samples rather than four cells.
+
+### Gate 5 is robust; `otf_core` was a lucky draw
+
+| quantity | 10-seed mean ± sd |
+|---|---|
+| `rho(coverage, -d+)` | **+0.940 ± 0.026** |
+| `rho(coverage, -d_TV)` | +0.115 ± 0.085 |
+| one-sided bound holds | **16.0 ± 0.0 of 16** — every cell, every seed |
+| mean slack | +0.048 ± 0.007 |
+
+The bound never fails, on any of 160 cells. The symmetric version sits near zero
+with a wide error bar, so "TV is uninformative" holds, though the single-seed
+−0.003 was itself noise around ≈ +0.1.
+
+Blind estimators, 10 seeds:
+
+| estimator | rho(cov, −blind d+) |
+|---|---|
+| `residual` (`r_nominal` alone) | **+0.728 ± 0.049** |
+| `qpred` (the model's own predicted quantile) | +0.488 ± 0.062 |
+| `all` (19 features) | +0.397 ± 0.053 |
+| `oscr` (14) | +0.381 ± 0.045 |
+| `otf` (5) | +0.352 ± 0.082 |
+| `otf_core` (3) | +0.340 ± 0.112 |
+| `blind_score` (`z(r) − z(q)`) | **−0.442 ± 0.109** |
+
+`residual` leads the runner-up by +0.240 against a pooled sd of 0.079 — clear of
+the noise. **`otf_core` collapses from +0.602 to +0.340 and finishes last**,
+which is exactly the optimism its oracle-based selection was flagged for. It is
+withdrawn.
+
+Two new estimators were tried and both lose. `qpred` is the model's own
+predicted quantile, a genuinely low-dimensional statistic, and it beats every
+novelty distance -- consistent with the dilution story -- but not the residual.
+`blind_score` mirrors the labelled conformity score term for term, replacing the
+unobservable error with the standardised residual; it is *consistently
+anti-correlated*, meaning the predicted quantile moves with the residual under
+shift and subtracting it destroys the signal rather than sharpening it.
+
+**So the plain measurement residual, tested against five alternatives over ten
+seeds, remains the best available deployment-time warning.** That is a firmer
+negative than the single-seed version, and it is what makes self-supervised
+calibration the right next step rather than more feature engineering.

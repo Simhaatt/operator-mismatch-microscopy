@@ -34,7 +34,8 @@ BioSR data (228 cells, 4 structures). No GPU has been used yet.
 | 4 | Does shift-aware calibration repair coverage? | FAILED, diagnosed |
 | 4b | Does the diagnosis suggest a fix? | PARTIAL — operator shift yes, content shift no |
 | 5 | Can coverage loss be bounded? | **PASS — one-sided bound, rho 0.938, holds 16/16** |
-| 6 | Does the OTF block beat it blind? | **FAILED — the plain residual wins (0.740 vs 0.406)** |
+| 6 | Does the OTF block beat it blind? | **FAILED — the plain residual wins (0.728 vs 0.352)** |
+| 7 | Does the layer transfer to REAL measurements? | **FAILED — coverage 0.15–0.55 vs 0.90. The bound still holds** |
 
 Headline results, all reproducible from cached features:
 
@@ -88,9 +89,21 @@ fuller run. If you find yourself about to write one, check the grid is complete.
    The block's effect on content-shift coverage is inconsistent, and only its
    effect on the *mismatch score* is uniform (3/3 caches).
 
+8. ~~"The OTF features change content-shift coverage."~~ Withdrawn in BOTH
+   directions. Over 10 partition seeds every 14-vs-19 difference is inside the
+   seed noise (|diff| <= 0.052, pooled sd 0.10-0.13). The claim and its own
+   retraction were each a single-seed reading.
+9. ~~"otf_core is a better blind estimator."~~ +0.602 on seed 0, +0.340 +- 0.112
+   over ten -- last place. It was selected on the oracle, and this is what that
+   costs.
+
 **Standing rule adopted: do not characterise a result until every cell of the
-grid is in.** This pattern has now cost four corrections, and caught the fifth
-before it was written down.
+grid is in.** This pattern has now cost six corrections.
+
+**Second standing rule: report every number over >= 10 partition seeds.**
+Conformal coverage is split-sensitive; single-seed differences of up to 0.2 on
+the CCPs cell are pure noise. `rotate_structures.py` and `gate5_bound.py` both
+take `--seeds`.
 
 ---
 
@@ -191,7 +204,36 @@ correlation reported against it ran on tied data. Now one tie-corrected
 implementation in `src/metrics/stats.py`, verified against scipy. Gate 4's rho
 moves +0.836 -> +0.864; **Gate 5's headline is unaffected**.
 
-### Step 5 — self-supervised calibration (~1 day, needs new code)
+### Steps 5-8 — done since, and what they changed
+
+**Multi-seed (`--seeds`).** Content shift survives: spread across seeds
+0.024-0.037 against 0.200-0.252 across structures, ~7x. Gate 5 holds **16/16 on
+every one of 10 seeds**, rho +0.940 +- 0.026. But the OTF coverage comparison is
+null (retraction 8) and `otf_core` is withdrawn (retraction 9).
+
+**Blind estimators.** Two new candidates, both lose to `r_nominal` (+0.728 +-
+0.049): the model's own predicted quantile `qpred` (+0.488), and `blind_score`
+= z(r) - z(q), which mirrors the labelled conformity score and comes out
+*anti*-correlated (-0.442). Five alternatives tested; the trivial residual wins.
+
+**Sim-to-real transfer (`scripts/sim2real.py`) — the important one.** The layer
+calibrated on simulation does **not** transfer to real BioSR widefield
+measurements: coverage 0.150-0.550 against nominal 0.900, and the blind warning
+signal *inverts* (rho -0.098 to -0.663). The Gate 5 bound holds in all three
+configurations (slack +0.199, +0.112, +0.050), which is its strongest validation
+yet -- it correctly announces the collapse rather than promising coverage.
+
+**Diagnosis: the forward model has no out-of-focus light.** Real widefield fits
+`a*blur(GT) + b` at R^2 0.72-0.96 with `b` at **19-68% of the measurement mean**
+(median 31%); the project simulated 5%. SIM reconstruction removes out-of-focus
+light, so a GT derived from it carries none and blurring cannot restore it.
+`extract_features.py` now takes `--background`. Correcting it cuts real error
+0.702 -> 0.513 and fixes CCPs five-fold (0.868 -> 0.165), but coverage falls
+because intervals narrow faster than error does. **This one mechanism explains
+CCPs being simultaneously worst on spectral realism, worst on coverage, and
+worst here.** See [docs/sim2real.md](docs/sim2real.md).
+
+### Step 9 — self-supervised calibration (~1 day, needs new code)
 
 The remaining improvement, and now the main one. Calibrate from the observed
 data itself so shift cannot bite. Sharper objective than when first proposed:

@@ -65,6 +65,15 @@ def main() -> None:
                          "operator if omitted, then held fixed across all cells")
     ap.add_argument("--tv-iter", type=int, default=100)
     ap.add_argument("--tv-prox-iter", type=int, default=10)
+    ap.add_argument("--background", type=float, default=5.0,
+                    help="constant additive rate, in photons. The default of 5 "
+                         "against a signal mean of 100 is 5%% background. Fitting "
+                         "real BioSR widefield measurements as a*blur(GT)+b puts "
+                         "the constant term at 19-68%% of the measurement mean "
+                         "(median 31%%), i.e. 4-14x larger: SIM reconstruction "
+                         "removes out-of-focus light, so a ground truth derived "
+                         "from it carries none and blurring it cannot put it "
+                         "back. Use ~45 to match the median real level.")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
@@ -72,7 +81,8 @@ def main() -> None:
     cfg = PupilConfig(n_out=args.kernel)
     psf0 = pupil_psf(None, cfg, warn=False)[0].to(device=device, dtype=dtype)
     probes = build_probes(cfg, device, dtype)
-    noise = NoiseConfig(photons=args.photons, background=5.0, read_noise_e=1.5)
+    noise = NoiseConfig(photons=args.photons, background=args.background,
+                        read_noise_e=1.5)
     cutoff = 2 * cfg.na / cfg.wavelength_um * cfg.pixel_um  # OTF support, cyc/px
     specs = ladder_specs(
         ["defocus", "astigmatism", "coma", "spherical"],
@@ -154,6 +164,7 @@ def main() -> None:
     store["feature_names"] = np.asarray(FEATURE_NAMES + OTF_FEATURE_NAMES)
     store["otf_cutoff_cyc_px"] = np.asarray([cutoff])
     store["photons"] = np.asarray([args.photons])
+    store["background"] = np.asarray([args.background])
     store["reconstructor"] = np.asarray([args.reconstructor])
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(args.out, **store)

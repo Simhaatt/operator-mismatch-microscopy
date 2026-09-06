@@ -78,6 +78,12 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--features", required=True)
     ap.add_argument("--alpha", type=float, default=0.1)
+    ap.add_argument("--seeds", type=int, default=1,
+                    help="number of partition seeds, 0..N-1. Every number in "
+                         "this project was originally a single split (seed 0). "
+                         "Conformal coverage is split-sensitive, so a spread "
+                         "across seeds is the difference between a result and "
+                         "an anecdote.")
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
 
@@ -89,21 +95,46 @@ def main() -> None:
     print()
     print(f"  {'held out':14s} {'test cov':>9s} {'ood cov':>8s} {'ood worst':>10s} "
           f"{'ood width':>10s} {'n_ood':>6s}")
+    seeds = list(range(args.seeds))
     results = {}
     for s in structures:
-        idx = partition(pool, s)
-        r = evaluate(pool, idx, args.alpha)
-        results[s] = r
-        print(f"  {s:14s} {r['test']['coverage']:9.3f} {r['ood']['coverage']:8.3f} "
-              f"{r['ood']['worst_group']:10.3f} {r['ood']['mean_width']:10.4f} "
-              f"{r['ood']['n']:6d}")
+        per_seed = [evaluate(pool, partition(pool, s, seed=k), args.alpha, seed=k)
+                    for k in seeds]
+        agg = {sp: {m: (float(np.mean([r[sp][m] for r in per_seed])),
+                        float(np.std([r[sp][m] for r in per_seed])))
+                    for m in ("coverage", "worst_group", "mean_width")}
+               for sp in ("test", "ood")}
+        results[s] = {"seeds": per_seed, "mean_sd": agg, "n_seeds": len(seeds),
+                      "n_ood": per_seed[0]["ood"]["n"]}
+        sd = "" if len(seeds) == 1 else (
+            f" +-{agg['test']['coverage'][1]:.3f}", f" +-{agg['ood']['coverage'][1]:.3f}")
+        if len(seeds) == 1:
+            print(f"  {s:14s} {agg['test']['coverage'][0]:9.3f} "
+                  f"{agg['ood']['coverage'][0]:8.3f} "
+                  f"{agg['ood']['worst_group'][0]:10.3f} "
+                  f"{agg['ood']['mean_width'][0]:10.4f} {results[s]['n_ood']:6d}")
+        else:
+            print(f"  {s:14s} {agg['test']['coverage'][0]:6.3f}{sd[0]:>8s} "
+                  f"{agg['ood']['coverage'][0]:6.3f}{sd[1]:>8s} "
+                  f"{agg['ood']['worst_group'][0]:10.3f} "
+                  f"{agg['ood']['mean_width'][0]:10.4f} {results[s]['n_ood']:6d}")
 
-    cov = [results[s]["ood"]["coverage"] for s in structures]
-    tst = [results[s]["test"]["coverage"] for s in structures]
+    cov = [results[s]["mean_sd"]["ood"]["coverage"][0] for s in structures]
+    tst = [results[s]["mean_sd"]["test"]["coverage"][0] for s in structures]
+    # Spread ACROSS seeds within a structure, versus spread ACROSS structures.
+    # If the first is comparable to the second, the content-shift story is
+    # partly partition noise and the per-structure numbers cannot be read
+    # individually. Separating them is the point of running more than one seed.
+    within = [results[s]["mean_sd"]["ood"]["coverage"][1] for s in structures]
     print()
+    print(f"  seeds                    : {len(seeds)}")
     print(f"  in-distribution coverage : {np.mean(tst):.3f} +- {np.std(tst):.3f}")
     print(f"  held-out coverage        : {np.mean(cov):.3f} +- {np.std(cov):.3f}  "
           f"(range {min(cov):.3f} to {max(cov):.3f})")
+    if len(seeds) > 1:
+        print(f"  spread across seeds      : {np.mean(within):.3f} "
+              f"(max {max(within):.3f}) -- compare with the {np.std(cov):.3f} "
+              f"across structures")
     print()
     print("  A collapse present for every held-out structure, not just one, is what")
     print("  makes this a property of content shift rather than of one odd split.")
