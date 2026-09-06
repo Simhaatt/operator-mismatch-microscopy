@@ -119,3 +119,33 @@ def test_every_interpolated_name_is_defined_before_use(nb) -> None:
             assert name in defined, (
                 f"cell {i} interpolates {{{name}}} but nothing assigns it yet -- "
                 f"this compiles and then fails at runtime")
+
+
+def test_nothing_is_written_to_drive(nb) -> None:
+    """Drive is read-only: inputs come from it, results come back as a download.
+
+    The trade-off is deliberate and worth not losing by accident -- writing
+    checkpoints to Drive protected them from a disconnect, and this gives that
+    up in exchange for not touching the user's Drive at all.
+    """
+    text = "\n".join(render(c) for c in nb["cells"] if c["cell_type"] == "code")
+    assert "OUT = Path('/content/out')" in text, "outputs must be on local disk"
+    # Checking writes rather than mentions: the notebook legitimately reads from
+    # Drive (glob, stat, unzip, and one copy *out* of it), so an allowlist of
+    # lines that mention Drive ends up policing prose instead of behaviour.
+    assert "NPZ.parent" not in text, "must not write beside the input data"
+    assert "DRIVE /" not in text.replace("glob.glob(str(DRIVE / ('*/' * depth) / name))", ""), \
+        "the only DRIVE path construction should be the input search"
+    # drive.mount('/content/drive') is the one legitimate use of that literal,
+    # so the patterns here are write verbs, not the path.
+    for bad in ("copy2(local", "copytree", "OUT = NPZ", "OUT = DRIVE"):
+        assert bad not in text, f"looks like a Drive write: {bad}"
+
+
+def test_results_come_back_as_one_download_with_a_manifest(nb) -> None:
+    text = render(nb["cells"][-1])
+    assert "files.download" in text, "the last cell must hand back the results"
+    assert "MANIFEST.json" in text
+    for key in ("code_commit", "haze_fraction", "per_cell", "epochs"):
+        assert key in text, f"manifest must record {key}"
+    assert "val_ssim" in text, "manifest must record what the models scored"

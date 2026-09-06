@@ -102,7 +102,11 @@ ZIP = find('microscopy_code.zip')
 print(f"  data: {NPZ}  ({NPZ.stat().st_size / 1e6:.0f} MB)")
 print(f"  code: {ZIP}  ({ZIP.stat().st_size / 1e3:.0f} KB)")
 
-OUT = NPZ.parent / 'out'      # results land beside their inputs
+# Outputs stay on the runtime disk and come back as a single download at the
+# end, so nothing is written to Drive -- Drive is read-only here. The trade-off
+# is real: a disconnect during the ~30 min of training loses the weights, where
+# writing to Drive would have kept every improvement as it happened.
+OUT = Path('/content/out')
 OUT.mkdir(exist_ok=True)
 
 MS = Path('/content/ms')
@@ -230,23 +234,55 @@ for model in ('unet', 'unrolled'):
 '''
 
 CELL_DONE = '''
-# 7 | What to take home
+# 7 | Zip the models and caches and download them
+import hashlib, json, zipfile
+
 caches = sorted(OUT.glob(f'*_{TAG}.npz'))
-print(f"Copy these {len(caches)} files into experiments/features19/ locally:\\n")
-for c in caches:
-    print(f"  {c.name:34s} {c.stat().st_size / 1024:6.0f} KB")
-print(f"\\nLeave the .pt weights in Drive ({OUT}) -- you do not need them locally.")
-if len(caches) != 4:
-    print(f"\\nWARNING: expected 4 caches, found {len(caches)}. Re-run this notebook; "
-          "finished steps are skipped.")
-else:
-    print("\\nThen, on the laptop:")
-    print(f"  python scripts/gate5_bound.py --features experiments/features19/*_{TAG}.npz --seeds 10")
-    print("  python scripts/rotate_structures.py "
-          f"--features experiments/features19/unet_photons_100_{TAG}.npz --seeds 10")
-    print("\\nThe U-Net has no data-fidelity term, so it is the one reconstructor")
-    print("that could overturn the mechanism established for RL and TV. It says")
-    print("nothing about the sim-to-real transfer failure -- see docs/sim2real.md.")
+models = sorted(OUT.glob(f'*_{TAG}.pt'))
+if len(caches) != 4 or len(models) != 2:
+    raise RuntimeError(f"expected 4 caches and 2 models, found {len(caches)} "
+                       f"and {len(models)} -- re-run the notebook, finished "
+                       f"steps are skipped")
+
+# A manifest, so a zip found in six months still says what produced it.
+manifest = {
+    'code_commit': stamp,
+    'haze_fraction': HAZE,
+    'per_cell': PER_CELL,
+    'epochs': EPOCHS,
+    'gpu': torch.cuda.get_device_name(0),
+    'files': {},
+}
+for f in models + caches:
+    manifest['files'][f.name] = {
+        'bytes': f.stat().st_size,
+        'sha256': hashlib.sha256(f.read_bytes()).hexdigest()[:16],
+    }
+for m in models:
+    ck = torch.load(m, map_location='cpu', weights_only=False)
+    manifest['files'][m.name]['val_ssim'] = ck.get('val_ssim')
+    manifest['files'][m.name]['model'] = ck.get('model')
+
+bundle = Path(f'/content/gpu_results_{TAG}.zip')
+with zipfile.ZipFile(bundle, 'w', zipfile.ZIP_DEFLATED) as z:
+    for f in models + caches:
+        z.write(f, f.name)
+    z.writestr('MANIFEST.json', json.dumps(manifest, indent=2))
+
+print(f"{bundle.name}  {bundle.stat().st_size / 1e6:.1f} MB")
+for name, meta in manifest['files'].items():
+    extra = f"  val SSIM {meta['val_ssim']:.4f}" if meta.get('val_ssim') else ''
+    print(f"  {name:36s} {meta['bytes'] / 1024:8.0f} KB{extra}")
+print()
+print("Unzip the four .npz into experiments/features19/ locally, then:")
+print(f"  python scripts/gate5_bound.py --features experiments/features19/*_{TAG}.npz --seeds 10")
+print()
+print("The U-Net has no data-fidelity term, so it is the one reconstructor that")
+print("could overturn the mechanism established for RL and TV. It says nothing")
+print("about the sim-to-real transfer failure -- see docs/sim2real.md.")
+
+from google.colab import files
+files.download(str(bundle))
 '''
 
 
