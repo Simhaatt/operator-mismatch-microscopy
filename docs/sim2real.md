@@ -142,13 +142,65 @@ samples per level:
 `rho(coverage, -d+)` = +0.920 ± 0.098, mean slack +0.053. The symmetric version
 is again uninformative (-0.400 ± 0.219).
 
-### What cannot be claimed from this run
+## The full real grid: four reconstructors, 16 cells
 
-The blind estimators are **not assessable** on these data. One cache gives only
-four rotations, and every blind statistic comes back between -0.72 and +0.14
-with a seed standard deviation of 0.32 to 0.51 -- the comparison that separated
-`qpred` from the rest over 16 cells is simply not resolvable over four. The run
-says nothing about which blind statistic to prefer on real data, and the
-standing rule applies: do not characterise until the grid is in. Getting there
-needs more real caches -- other reconstructors, or the levels split into
-separate cells -- not more seeds.
+The single-cache run above gave only four rotations, where every blind statistic
+landed inside its own seed noise. Repeating with all four reconstructors on real
+measurements gives a 16-cell grid directly comparable to the simulated one.
+
+### In-domain calibration works, whatever the reconstructor
+
+| reconstructor | in-distribution | held out |
+|---|---|---|
+| Richardson-Lucy | 0.884 ± 0.017 | 0.843 ± 0.151 |
+| Poisson-TV | 0.871 ± 0.012 | 0.781 ± 0.151 |
+| U-Net | **0.895 ± 0.009** | 0.691 ± 0.289 |
+| unrolled | 0.883 ± 0.009 | 0.578 ± 0.341 |
+
+In-distribution coverage is 0.871-0.895 against a nominal 0.900 for all four. The
+method is sound on real measurements and does not depend on the reconstructor.
+
+**But the learned reconstructors degrade far more under real content shift** --
+0.691 and 0.578, against 0.843 and 0.781 for the classical pair, with roughly
+twice the spread across structures (±0.29 and ±0.34) and a worst cell of 0.105.
+That is consistent with the content-dependence found in
+[gpu_reconstructors.md](gpu_reconstructors.md): a learned reconstructor's
+behaviour on unfamiliar specimens is itself unfamiliar, so a reliability layer
+built on it inherits two content shifts rather than one.
+
+### The bound holds on real data too
+
+| quantity | value |
+|---|---|
+| `rho(coverage, −d+)` | **+0.933 ± 0.053** |
+| one-sided bound holds | **16/16 on every one of 10 seeds** |
+| mean slack | +0.088 ± 0.010 |
+| `rho(coverage, −d_TV)` | +0.117 ± 0.089 (uninformative, as everywhere) |
+
+So the bound has now held on 16/16 cells and every seed in four separate
+settings: the original simulated grid, the realistic-background grid, the
+four-reconstructor grid, and real measurements.
+
+### The clear negative: no blind estimator works on real data
+
+| blind statistic | real | simulated |
+|---|---|---|
+| `qpred` | +0.222 ± 0.153 | **+0.616 ± 0.044** |
+| `oscr` (14 features) | +0.197 ± 0.055 | +0.375 ± 0.078 |
+| `otf` (5) | +0.182 ± 0.041 | +0.276 ± 0.079 |
+| `all` (19) | +0.166 ± 0.044 | +0.450 ± 0.065 |
+| `otf_core` (3) | −0.123 ± 0.067 | +0.366 ± 0.099 |
+| `residual` | −0.162 ± 0.084 | +0.083 ± 0.061 |
+| `blind_score` | −0.310 ± 0.092 | +0.101 ± 0.071 |
+
+Nothing reaches +0.25, and the leader beats the runner-up by 0.025 against a
+pooled standard deviation of 0.163 -- not separated. On simulated data `qpred`
+won clear of the noise at +0.616; on real data it does not win at all.
+
+**This is now the project's sharpest limitation, and it is a clean split.**
+Coverage can be *achieved* on real measurements by calibrating in-domain, and it
+can be *bounded* post-hoc by `d+`. It cannot be *anticipated* blindly: every
+label-free warning signal tested -- physics-derived, learned, or trivial --
+fails to predict coverage loss on real data. Whatever makes the simulated proxy
+work does not survive contact with a real measurement, and that is the gap
+self-supervised calibration would have to close.

@@ -37,7 +37,8 @@ BioSR data (228 cells, 4 structures). No GPU has been used yet.
 | 6 | Does the OTF block beat it blind? | FAILED — but so does the residual once the background is realistic |
 | 7 | Does the layer transfer to REAL measurements? | **FAILED — coverage 0.15–0.55 vs 0.90. The bound still holds** |
 | 8 | Does a reconstructor with NO fidelity term break the mechanism? | **PASS — U-Net matches RL to 3 d.p. The scope holds** |
-| 9 | Does the layer work calibrated ON real measurements? | **PASS — 0.884 in-distribution vs nominal 0.90. Gate 7 was the forward model** |
+| 9 | Does the layer work calibrated ON real measurements? | **PASS — 0.871–0.895 in-distribution, all four reconstructors** |
+| 10 | Can coverage loss be anticipated BLINDLY on real data? | **FAILED — nothing beats +0.222, none separated from seed noise** |
 
 Headline results, all reproducible from cached features:
 
