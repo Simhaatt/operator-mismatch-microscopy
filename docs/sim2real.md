@@ -88,3 +88,67 @@ One mechanism explains all three. CCPs is sparse and punctate, so its specimen
 signal is weak relative to the diffuse background; the forward model omits that
 background; so CCPs is where simulation departs furthest from reality. What
 looked like three unrelated oddities is one.
+
+---
+
+## Calibrating on real measurements instead: it works
+
+The transfer failure above leaves one question. Is the problem the *forward
+model*, or the reliability layer itself? Calibrating on real measurements and
+testing on held-out real measurements separates them.
+
+784 samples from 157 cells at five signal levels, blocked by cell, oracle
+background, 10 partition seeds (`scripts/real_calibration.py`).
+
+| | calibrated on simulation | calibrated on real |
+|---|---|---|
+| in-distribution coverage | -- | **0.884 ± 0.017** |
+| held-out structure | 0.150-0.550 | **0.843 ± 0.151** |
+
+**In-distribution coverage is essentially nominal** -- 0.884 against 0.900, a
+gap smaller than the seed spread. So the reliability layer works on real
+measurements. The sim-to-real collapse was the forward model's missing
+out-of-focus term, not a defect in the method. The practical prescription is
+correspondingly simple: **calibrate on real data.**
+
+Per held-out structure, and note what happened to CCPs:
+
+| held out | real coverage | in simulation |
+|---|---|---|
+| CCPs | **0.999** | 0.245-0.497 |
+| Microtubules | 0.937 | 0.842-0.884 |
+| ER | 0.833 | 0.848-0.972 |
+| F-actin | **0.604** | 0.918-0.931 |
+
+CCPs reverses from the worst structure to the best, which is what the haze
+diagnosis predicts: CCPs has the highest out-of-focus fraction (0.676), so its
+*simulated* features were the most distorted, and on real data that distortion
+is simply absent. F-actin becomes the worst instead. **Content shift still
+bites; it has relocated, not gone.** And CCPs' 0.999 comes with the widest
+intervals of the four (0.585), so it is conservative rather than sharp.
+
+The signal-level axis gives a clean real dose-response, monotone across 182
+samples per level:
+
+| level | median true error |
+|---|---|
+| L01 | 0.608 |
+| L03 | 0.383 |
+| L05 | 0.287 |
+| L07 | 0.275 |
+| L09 | 0.248 |
+
+**The bound holds here too**: 4/4 cells on every one of 10 seeds,
+`rho(coverage, -d+)` = +0.920 ± 0.098, mean slack +0.053. The symmetric version
+is again uninformative (-0.400 ± 0.219).
+
+### What cannot be claimed from this run
+
+The blind estimators are **not assessable** on these data. One cache gives only
+four rotations, and every blind statistic comes back between -0.72 and +0.14
+with a seed standard deviation of 0.32 to 0.51 -- the comparison that separated
+`qpred` from the rest over 16 cells is simply not resolvable over four. The run
+says nothing about which blind statistic to prefer on real data, and the
+standing rule applies: do not characterise until the grid is in. Getting there
+needs more real caches -- other reconstructors, or the levels split into
+separate cells -- not more seeds.
