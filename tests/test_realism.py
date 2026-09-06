@@ -182,3 +182,39 @@ def test_real_widefield_sums_the_dose_and_scales_the_divisor_to_match() -> None:
     expected = 0.6026 * float((m * (m - ped)).sum() / ((m - ped) ** 2).sum())
     r = variance_vs_mean(out["y"], *_oob(out["diff"], out["divisor"]), tile=16)
     assert r["gain_fixed"] == pytest.approx(expected, rel=0.10)
+
+
+def test_background_for_holds_the_haze_fraction_across_the_photon_range() -> None:
+    """A fixed background rate is correct at exactly one photon level.
+
+    BioSR spans 15 to 600 photons. A flat background of 45 gives a haze fraction
+    of 75% at the dim end and 7% at the bright end, against an observed 19-68%.
+    Holding the rate fixed while sweeping the budget was a real mistake here --
+    it collapsed a mismatch correlation to -0.151 and looked like a result.
+    """
+    from src.optics.forward_model import BIOSR_PHOTON_RANGE, background_for
+
+    for photons in (BIOSR_PHOTON_RANGE[0], 100.0, BIOSR_PHOTON_RANGE[1]):
+        b = background_for(photons, 0.31)
+        assert b / (photons + b) == pytest.approx(0.31, abs=1e-9)
+    # The observed median at 100 photons is what the earlier sweep used.
+    assert background_for(100.0, 0.31) == pytest.approx(44.93, abs=0.01)
+    assert background_for(15.0, 0.31) == pytest.approx(6.74, abs=0.01)
+
+
+def test_background_for_is_zero_at_zero_fraction_and_rejects_nonsense() -> None:
+    from src.optics.forward_model import background_for
+
+    assert background_for(100.0, 0.0) == 0.0
+    for bad in (-0.1, 1.0, 1.5):
+        with pytest.raises(ValueError):
+            background_for(100.0, bad)
+
+
+def test_a_fixed_background_does_not_hold_the_fraction() -> None:
+    """The regression this parameterisation exists to prevent."""
+    from src.optics.forward_model import BIOSR_PHOTON_RANGE
+
+    lo, hi = BIOSR_PHOTON_RANGE
+    assert 45.0 / (lo + 45.0) > 0.68     # 75% at 15 photons, above observed max
+    assert 45.0 / (hi + 45.0) < 0.19     # 7% at 600 photons, below observed min

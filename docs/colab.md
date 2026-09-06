@@ -64,13 +64,20 @@ whole session:
   learned reconstructor evaluated under a different forward model than it was
   trained on measures domain shift rather than reliability.
 
-**Why `--background 45` and not the default 5.** Fitting real BioSR widefield
-measurements as `a*blur(GT) + b` puts the constant term at 19-68% of the
-measurement mean (median 31%); the old default is 5%. SIM reconstruction removes
-out-of-focus light, so a ground truth derived from it carries none and blurring
-cannot put it back. See [sim2real.md](sim2real.md). The RL and TV caches you will
-compare against are `experiments/features19/*_bg45.npz`, extracted at 45, so
-training at anything else makes the comparison meaningless.
+**Why `--haze-frac 0.31` and not the default background of 5.** Fitting real
+BioSR widefield measurements as `a*blur(GT) + b` puts the constant term at
+19-68% of the measurement mean (median 31%); the old default is 5%. SIM
+reconstruction removes out-of-focus light, so a ground truth derived from it
+carries none and blurring cannot put it back. See [sim2real.md](sim2real.md).
+
+**Pass the fraction, not a fixed rate.** Training samples photons across 15-600
+per patch, so a flat `--background 45` would give 75% haze at the dim end and 7%
+at the bright end -- only one photon level lands in the observed range. Only the
+*fraction* is a property of the microscope. This is not hypothetical: a flat
+rate applied at two photon levels collapsed a mismatch correlation to -0.151 and
+read as a finding until the arithmetic was checked. `--haze-frac` recomputes the
+rate per photon budget, and `extract_features.py` refuses a checkpoint whose
+training fraction differs from the extraction fraction.
 
 ```python
 # 1. Mount Drive and unpack the code

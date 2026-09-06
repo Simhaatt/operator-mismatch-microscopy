@@ -32,7 +32,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.data.biosr import index_biosr, index_npz, load_object, split_by_cell  # noqa: E402
 from src.metrics.image import scale_match, ssim  # noqa: E402
 from src.optics.forward_model import (  # noqa: E402
-    BIOSR_PHOTON_RANGE, NoiseConfig, sample_seed, simulate_measurement,
+    BIOSR_PHOTON_RANGE, NoiseConfig, background_for, sample_seed,
+    simulate_measurement,
 )
 from src.optics.psf import PupilConfig, pupil_psf  # noqa: E402
 from src.reconstruction.unet import UNet, normalise_measurement  # noqa: E402
@@ -40,7 +41,7 @@ from src.reconstruction.unrolled import UnrolledNet  # noqa: E402
 
 
 def make_pairs(entries, psf0, cfg, n_per_cell, patch, device, dtype, tag,
-               background=5.0, seed=0):
+               background=5.0, haze_frac=None, seed=0):
     """Pre-generate (measurement, target) patches under the nominal operator."""
     rng = np.random.default_rng(seed)
     ys, xs = [], []
@@ -54,8 +55,13 @@ def make_pairs(entries, psf0, cfg, n_per_cell, patch, device, dtype, tag,
             if float(x.mean()) < 1e-4:
                 continue  # skip empty background crops
             photons = float(rng.uniform(*BIOSR_PHOTON_RANGE))
-            noise = NoiseConfig(photons=photons, background=background,
-                                read_noise_e=1.5)
+            # Photons are sampled per patch across 15-600, so a FIXED background
+            # would give a haze fraction of 75% at the dim end and 7% at the
+            # bright end. Only the fraction is a property of the microscope, so
+            # when one is given the rate is recomputed for every patch.
+            bg = (background_for(photons, haze_frac) if haze_frac is not None
+                  else background)
+            noise = NoiseConfig(photons=photons, background=bg, read_noise_e=1.5)
             y = simulate_measurement(x, psf0, noise, seed=sample_seed(tag, e.key, j))
             ys.append(y.cpu())
             xs.append(x.cpu())
@@ -78,6 +84,12 @@ def main() -> None:
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--amp", action="store_true", help="mixed precision (GPU only)")
     ap.add_argument("--limit-cells", type=int, default=None)
+    ap.add_argument("--haze-frac", type=float, default=None,
+                    help="out-of-focus fraction of the measurement mean, held "
+                         "constant as the per-patch photon budget varies. "
+                         "PREFER THIS over --background, which is a fixed rate "
+                         "and therefore correct at one photon level only. Real "
+                         "BioSR is 0.19-0.68, median 0.31.")
     ap.add_argument("--background", type=float, default=5.0,
                     help="constant additive rate, in photons. MUST match the "
                          "background the comparison feature caches were "
@@ -104,9 +116,10 @@ def main() -> None:
           f"cells: train={len(train)} val={len(val)}")
     print("  pre-generating training pairs (fixed seeds, bit-reproducible)...")
     ytr, xtr = make_pairs(train, psf0, cfg, args.per_cell, args.patch, device,
-                          dtype, "train", background=args.background)
+                          dtype, "train", background=args.background,
+                          haze_frac=args.haze_frac)
     yva, xva = make_pairs(val, psf0, cfg, 2, args.patch, device, dtype, "val",
-                          background=args.background)
+                          background=args.background, haze_frac=args.haze_frac)
     print(f"  {len(ytr)} training patches, {len(yva)} validation")
 
     model = (UNet(base=32, depth=3) if args.model == "unet"

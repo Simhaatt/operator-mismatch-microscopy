@@ -31,7 +31,7 @@ from src.data.biosr import index_biosr, index_npz, load_object, split_by_cell  #
 from src.metrics.image import scale_match, ssim  # noqa: E402
 from src.optics.aberrations import ABERRATION_MODES, ladder_specs  # noqa: E402
 from src.optics.forward_model import (  # noqa: E402
-    NoiseConfig, sample_seed, simulate_measurement,
+    NoiseConfig, background_for, sample_seed, simulate_measurement,
 )
 from src.optics.psf import PupilConfig, pupil_psf  # noqa: E402
 from src.reconstruction.rl import richardson_lucy  # noqa: E402
@@ -80,6 +80,13 @@ def main() -> None:
                          "removes out-of-focus light, so a ground truth derived "
                          "from it carries none and blurring it cannot put it "
                          "back. Use ~45 to match the median real level.")
+    ap.add_argument("--haze-frac", type=float, default=None,
+                    help="out-of-focus fraction of the measurement mean; sets "
+                         "the background as photons*f/(1-f), so the fraction is "
+                         "held constant as the photon budget changes. PREFER "
+                         "THIS over --background: a fixed rate is correct at "
+                         "one photon level only (45 is 31%% at 100 photons but "
+                         "75%% at 15). Real BioSR is 0.19-0.68, median 0.31.")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
@@ -87,8 +94,13 @@ def main() -> None:
     cfg = PupilConfig(n_out=args.kernel)
     psf0 = pupil_psf(None, cfg, warn=False)[0].to(device=device, dtype=dtype)
     probes = build_probes(cfg, device, dtype)
-    noise = NoiseConfig(photons=args.photons, background=args.background,
+    background = (background_for(args.photons, args.haze_frac)
+                  if args.haze_frac is not None else args.background)
+    noise = NoiseConfig(photons=args.photons, background=background,
                         read_noise_e=1.5)
+    if args.haze_frac is not None:
+        print(f"  haze fraction {args.haze_frac:.2f} -> background "
+              f"{background:.2f} at {args.photons:.0f} photons")
     cutoff = 2 * cfg.na / cfg.wavelength_um * cfg.pixel_um  # OTF support, cyc/px
     specs = ladder_specs(
         ["defocus", "astigmatism", "coma", "spherical"],
@@ -140,11 +152,18 @@ def main() -> None:
         if ck["model"] != args.reconstructor:
             raise ValueError(f"checkpoint holds a {ck['model']!r} but "
                              f"--reconstructor is {args.reconstructor!r}")
-        trained_bg = float(ck["args"].get("background", 5.0))
-        if abs(trained_bg - args.background) > 1e-6:
+        tr = ck["args"]
+        trained_frac = tr.get("haze_frac")
+        if trained_frac is None:
+            trained_frac = float(tr.get("background", 5.0)) / (100.0 + float(
+                tr.get("background", 5.0)))    # legacy: fixed rate, nominal 100 ph
+        here_frac = float(background / (args.photons + background))
+        trained_bg = background_for(args.photons, float(trained_frac))
+        if abs(float(trained_frac) - here_frac) > 1e-3:
             raise ValueError(
-                f"checkpoint was trained at background={trained_bg} but this "
-                f"extraction uses {args.background}. A learned reconstructor "
+                f"checkpoint was trained at haze fraction {float(trained_frac):.3f} "
+                f"(background {trained_bg:.2f} here) but this extraction uses "
+                f"{here_frac:.3f} ({background:.2f}). A learned reconstructor "
                 f"evaluated under a different forward model than it was trained "
                 f"on measures domain shift, not reliability. Re-train or match.")
         net = (UNet(base=32, depth=3) if args.reconstructor == "unet"
@@ -153,7 +172,7 @@ def main() -> None:
         net = net.to(device=device, dtype=dtype).eval()
         print(f"  loaded {args.reconstructor} from {args.checkpoint} "
               f"(val SSIM {ck.get('val_ssim', float('nan')):.4f}, "
-              f"background {trained_bg})")
+              f"haze fraction {float(trained_frac):.3f})")
 
         def reconstruct(y):
             # Exactly the convention train_reconstructor.py used, or xhat_std
@@ -201,7 +220,8 @@ def main() -> None:
     store["feature_names"] = np.asarray(FEATURE_NAMES + OTF_FEATURE_NAMES)
     store["otf_cutoff_cyc_px"] = np.asarray([cutoff])
     store["photons"] = np.asarray([args.photons])
-    store["background"] = np.asarray([args.background])
+    store["background"] = np.asarray([background])
+    store["haze_frac"] = np.asarray([background / (args.photons + background)])
     store["reconstructor"] = np.asarray([args.reconstructor])
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(args.out, **store)

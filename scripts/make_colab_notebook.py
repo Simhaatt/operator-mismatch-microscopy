@@ -17,7 +17,7 @@ import argparse
 import json
 from pathlib import Path
 
-BG = 45
+HAZE = 0.31   # observed median out-of-focus fraction; see docs/sim2real.md
 
 
 def code(src: str) -> dict:
@@ -160,15 +160,21 @@ print(f"  tiny source: {len(sel)} images, {sorted(set(st[sel]))}")
 
 # Real BioSR widefield carries 19-68% of its mean as out-of-focus light
 # (median 31%) against this project's old default of 5%; see docs/sim2real.md.
-# The RL and TV caches to compare against are the *_bg45 set, so training at
-# anything else makes the comparison meaningless.
-BG = __BG__
+#
+# Pass the FRACTION, not a fixed rate. Training samples photons across 15-600
+# per patch, so a flat background would give 75% haze at the dim end and 7% at
+# the bright end. Only the fraction is a property of the microscope. Getting
+# this wrong is not hypothetical -- a flat rate collapsed a mismatch
+# correlation to -0.151 and looked like a finding until the arithmetic was
+# checked.
+HAZE = __HAZE__
+TAG = f'haze{int(HAZE * 100)}'
 
 sh('python scripts/train_reconstructor.py --model unet --device cuda --amp '
-   f'--background {BG} --limit-cells 4 --epochs 1 --per-cell 1 --patch 128 '
+   f'--haze-frac {HAZE} --limit-cells 4 --epochs 1 --per-cell 1 --patch 128 '
    '--out /content/tiny_unet.pt', 'smoke train')
 sh('python scripts/extract_features.py --reconstructor unet '
-   f'--checkpoint /content/tiny_unet.pt --background {BG} --device cuda '
+   f'--checkpoint /content/tiny_unet.pt --haze-frac {HAZE} --device cuda '
    '--crop 64 --kernel 31 --photons 100 --source data/tiny_gt.npz '
    '--out /content/tiny.npz', 'smoke extract')
 
@@ -176,19 +182,19 @@ n = len(np.load('/content/tiny.npz', allow_pickle=True)['feature_names'])
 if n != 19:
     raise RuntimeError(f'expected 19 features, got {n}')
 print('  smoke test passed: 19 features out of the trained-network path')
-'''.replace('__BG__', str(BG))   # literal % in the comments rules out %-formatting
+'''.replace('__HAZE__', str(HAZE))   # literal % in the comments rules out %-formatting
 
 CELL_TRAIN = '''
 # 5 | THE REAL JOB: train both reconstructors. ~1-2 h total.
 #     --out is on Drive, so every improvement survives a disconnect. Already
 #     finished models are skipped, which makes the notebook safe to re-run.
 for model in ('unet', 'unrolled'):
-    dst = OUT / f'{model}_bg{BG}.pt'
+    dst = OUT / f'{model}_{TAG}.pt'
     if dst.exists():
         print(f"  {dst.name} already present -- skipping (delete it to retrain)")
         continue
     sh(f'python scripts/train_reconstructor.py --model {model} --device cuda '
-       f'--amp --background {BG} --out "{dst}"', f'train {model}')
+       f'--amp --haze-frac {HAZE} --out "{dst}"', f'train {model}')
 '''
 
 CELL_EXTRACT = '''
@@ -201,12 +207,12 @@ CELL_EXTRACT = '''
 #     family dominates the cost.
 for model in ('unet', 'unrolled'):
     for ph, it in ((100, 75), (15, 30)):
-        dst = OUT / f'{model}_photons_{ph}_bg{BG}.npz'
+        dst = OUT / f'{model}_photons_{ph}_{TAG}.npz'
         if dst.exists():
             print(f"  {dst.name} already present -- skipping")
             continue
         sh(f'python scripts/extract_features.py --reconstructor {model} '
-           f'--checkpoint "{OUT}/{model}_bg{BG}.pt" --background {BG} '
+           f'--checkpoint "{OUT}/{model}_{TAG}.pt" --haze-frac {HAZE} '
            f'--device cuda --crop 256 --photons {ph} --n-iter {it} '
            f'--source data/biosr_gt.npz --out "{dst}"',
            f'extract {model} @ {ph} photons')
@@ -214,7 +220,7 @@ for model in ('unet', 'unrolled'):
 
 CELL_DONE = '''
 # 7 | What to take home
-caches = sorted(OUT.glob(f'*_bg{BG}.npz'))
+caches = sorted(OUT.glob(f'*_{TAG}.npz'))
 print(f"Copy these {len(caches)} files into experiments/features19/ locally:\\n")
 for c in caches:
     print(f"  {c.name:34s} {c.stat().st_size / 1024:6.0f} KB")
@@ -224,9 +230,9 @@ if len(caches) != 4:
           "finished steps are skipped.")
 else:
     print("\\nThen, on the laptop:")
-    print("  python scripts/gate5_bound.py --features experiments/features19/*_bg45.npz --seeds 10")
+    print(f"  python scripts/gate5_bound.py --features experiments/features19/*_{TAG}.npz --seeds 10")
     print("  python scripts/rotate_structures.py "
-          "--features experiments/features19/unet_photons_100_bg45.npz --seeds 10")
+          f"--features experiments/features19/unet_photons_100_{TAG}.npz --seeds 10")
     print("\\nThe U-Net has no data-fidelity term, so it is the one reconstructor")
     print("that could overturn the mechanism established for RL and TV. It says")
     print("nothing about the sim-to-real transfer failure -- see docs/sim2real.md.")

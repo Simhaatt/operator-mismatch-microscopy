@@ -37,6 +37,8 @@ __all__ = [
     "apply_psf",
     "simulate_measurement",
     "BIOSR_PHOTON_RANGE",
+    "BIOSR_HAZE_FRACTION",
+    "background_for",
 ]
 
 
@@ -44,6 +46,30 @@ __all__ = [
 # (figshare 13264793, verified). Photon budgets outside this range are not
 # supported by the source data and should be justified explicitly.
 BIOSR_PHOTON_RANGE: tuple[float, float] = (15.0, 600.0)
+
+#: Fraction of a real BioSR widefield measurement's mean that is out-of-focus
+#: light, measured by fitting ``a * blur(GT) + b`` to the summed raw SIM frames:
+#: 19-68% across structures, median 31%. See docs/sim2real.md.
+BIOSR_HAZE_FRACTION: float = 0.31
+
+
+def background_for(photons: float, fraction: float = BIOSR_HAZE_FRACTION) -> float:
+    """Background rate giving a fixed haze *fraction* at a given photon budget.
+
+    The measurement mean is ``photons + background``, so a haze fraction
+    ``f = b / (photons + b)`` requires ``b = photons * f / (1 - f)``.
+
+    This exists because a fixed background is only correct at one photon level.
+    At 45 photons of background the haze fraction is 31% at 100 photons -- the
+    observed median -- but **75% at 15 and 7% at 600**, and the BioSR range is
+    15 to 600. Holding the absolute rate fixed while sweeping the budget was a
+    real mistake here: it collapsed a mismatch correlation to -0.151 and looked
+    like a finding until the arithmetic was checked.
+    """
+    if not 0.0 <= fraction < 1.0:
+        raise ValueError(f"haze fraction must be in [0, 1), got {fraction}")
+    return float(photons) * fraction / (1.0 - fraction)
+
 
 
 @dataclass(frozen=True)
