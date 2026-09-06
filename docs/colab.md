@@ -30,7 +30,26 @@ Put both files in a Drive folder, e.g. `MyDrive/microscopy/`. A 303 MB upload
 over a home connection is minutes, and it persists across Colab sessions --
 unlike the runtime's own disk.
 
-## Notebook — run these cells in order
+## The notebook
+
+`notebooks/colab_gpu_session.ipynb` (regenerate with
+`python scripts/make_colab_notebook.py`) is built to be run with **Runtime > Run
+all** and nothing else. Upload it to Colab directly -- File > Upload notebook --
+it does not need to be in Drive. It locates `biosr_gt.npz` and
+`microscopy_code.zip` anywhere under `MyDrive` rather than hard-coding a path,
+writes results next to the data, skips work already finished so it is safe to
+re-run, and routes every shell step through a runner that raises on a non-zero
+exit so Run all halts at the first real failure instead of feeding a stale
+checkpoint into the next step.
+
+**Rebuild the code zip before every session** with `python scripts/pack_code.py`.
+A stale zip is silent: Colab unpacks it, everything imports, and the results are
+from whenever it was last built. The zip now carries a `BUILD_STAMP` with the
+commit and the notebook prints it back.
+
+The cells below are the same steps, if you would rather drive it by hand.
+
+## Notebook — the cells, run in order
 
 ### 0. Before you start
 
