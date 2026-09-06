@@ -48,6 +48,9 @@ from src.metrics.image import scale_match, ssim  # noqa: E402
 from src.optics.forward_model import apply_psf  # noqa: E402
 from src.optics.psf import PupilConfig, pupil_psf  # noqa: E402
 from src.reconstruction.rl import richardson_lucy  # noqa: E402
+from src.reconstruction.tv import poisson_tv  # noqa: E402
+from src.reconstruction.unet import UNet, normalise_measurement  # noqa: E402
+from src.reconstruction.unrolled import UnrolledNet  # noqa: E402
 from src.reliability.features import (  # noqa: E402
     FEATURE_NAMES, OTF_FEATURE_NAMES, oscr_features,
 )
@@ -89,11 +92,50 @@ def prepare(zf, raw_member, gt_member, groups, psf0, crop, target_photons):
             float(b * scale), float(y_cam.mean()))
 
 
+def make_reconstructor(args, psf0):
+    """The same four reconstructors `extract_features.py` offers.
+
+    Four reconstructors on real data give a 16-cell grid, matching the
+    simulated one. That matters for a specific reason: with a single cache the
+    rotation yields only four cells, and every blind statistic came back between
+    -0.72 and +0.14 with a seed standard deviation of 0.32 to 0.51. The
+    comparison that separated `qpred` over 16 cells is simply not resolvable
+    over four, and no number of seeds fixes a grid that small.
+    """
+    if args.reconstructor == "rl":
+        return lambda y, bg: richardson_lucy(
+            y, psf0, args.n_iter, background=bg,
+            read_variance=args.read_noise_e**2)
+    if args.reconstructor == "tv":
+        return lambda y, bg: poisson_tv(
+            y, psf0, args.tv_iter, weight=args.tv_weight, background=bg,
+            prox_iter=args.tv_prox_iter)
+    ck = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
+    if ck["model"] != args.reconstructor:
+        raise ValueError(f"checkpoint holds {ck['model']!r}, not "
+                         f"{args.reconstructor!r}")
+    net = (UNet(base=32, depth=3) if args.reconstructor == "unet"
+           else UnrolledNet(n_stages=5, width=32))
+    net.load_state_dict(ck["state_dict"])
+    net = net.to(torch.float32).eval()
+    print(f"  loaded {args.reconstructor} (val SSIM {ck['val_ssim']:.4f}, "
+          f"trained at haze {ck['args'].get('haze_frac')})")
+
+    def run(y, bg):
+        with torch.no_grad():
+            if args.reconstructor == "unet":
+                yn, sc = normalise_measurement(y)
+                return net(yn) * sc
+            return net(y, psf0)
+    return run
+
+
 def collect(args) -> dict:
     cfg = PupilConfig(n_out=args.kernel)
     psf0 = pupil_psf(None, cfg, warn=False)[0].to(torch.float32)
     probes = build_probes(cfg, torch.device("cpu"), torch.float32)
     cutoff = 2 * cfg.na / cfg.wavelength_um * cfg.pixel_um
+    reconstruct = make_reconstructor(args, psf0)
 
     rows, skipped = [], []
     for structure in args.structures:
@@ -126,9 +168,7 @@ def collect(args) -> dict:
                     except ValueError as exc:
                         skipped.append(f"{structure}/{cell} L{level}: {exc}")
                         continue
-                    x_hat = richardson_lucy(y[None], psf0, args.n_iter,
-                                            background=bg,
-                                            read_variance=args.read_noise_e**2)
+                    x_hat = reconstruct(y[None], bg)
                     feats = oscr_features(y[None], x_hat, psf0, probes,
                                           cutoff_cyc_px=cutoff)[0].numpy()
                     e = float(1.0 - ssim(scale_match(x_hat[0], gt), gt,
@@ -169,10 +209,15 @@ def write_cache(rows, args) -> None:
                      or role_of.get(r["cell"], "ood") for r in rows])
 
     store = {}
+    n_feat = len(FEATURE_NAMES) + len(OTF_FEATURE_NAMES)
     for s in SPLITS:
         sel = [i for i, x in enumerate(role) if x == s]
-        store[f"{s}_X"] = np.asarray([rows[i]["X"] for i in sel], dtype=np.float32
-                                     ).reshape(len(sel), -1)
+        # Give the shape explicitly: np.asarray([]) is 1-D, so reshape(-1)
+        # cannot infer a feature axis and an empty split raises. Empty splits
+        # happen for real -- a structure with too few cells to divide, or a
+        # held-out structure that is the only one present.
+        store[f"{s}_X"] = (np.asarray([rows[i]["X"] for i in sel], dtype=np.float32)
+                           if sel else np.zeros((0, n_feat), dtype=np.float32))
         store[f"{s}_e"] = np.asarray([rows[i]["e"] for i in sel], dtype=np.float32)
         store[f"{s}_rms"] = np.full(len(sel), np.nan, dtype=np.float32)
         store[f"{s}_severity"] = np.asarray([f"L{rows[i]['level']:02d}" for i in sel])
@@ -185,7 +230,7 @@ def write_cache(rows, args) -> None:
     store["background"] = np.asarray([float(np.median([r["background"] for r in rows]))])
     store["haze_frac"] = np.asarray([float(np.median(
         [r["background"] / (args.photons + r["background"]) for r in rows]))])
-    store["reconstructor"] = np.asarray(["rl_real"])
+    store["reconstructor"] = np.asarray([f"{args.reconstructor}_real"])
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(args.out, **store)
     print(f"  wrote {args.out}")
@@ -201,6 +246,16 @@ def main() -> None:
     ap.add_argument("--crop", type=int, default=256)
     ap.add_argument("--kernel", type=int, default=191)
     ap.add_argument("--n-iter", type=int, default=75)
+    ap.add_argument("--reconstructor", choices=("rl", "tv", "unet", "unrolled"),
+                    default="rl")
+    ap.add_argument("--checkpoint", default=None,
+                    help="required for unet/unrolled")
+    ap.add_argument("--tv-weight", type=float, default=0.02,
+                    help="the value selected on the nominal operator for the "
+                         "simulated TV caches, held fixed so real and simulated "
+                         "TV differ only in the measurement")
+    ap.add_argument("--tv-iter", type=int, default=100)
+    ap.add_argument("--tv-prox-iter", type=int, default=10)
     ap.add_argument("--photons", type=float, default=100.0)
     ap.add_argument("--read-noise-e", type=float, default=1.5)
     ap.add_argument("--held-out", default="CCPs")
@@ -208,8 +263,10 @@ def main() -> None:
     ap.add_argument("--archives", default="data/biosr")
     ap.add_argument("--out", default="experiments/features19/real_rl.npz")
     args = ap.parse_args()
+    if args.reconstructor in ("unet", "unrolled") and not args.checkpoint:
+        ap.error(f"--reconstructor {args.reconstructor} needs --checkpoint")
 
-    print("REAL-MEASUREMENT FEATURE EXTRACTION")
+    print(f"REAL-MEASUREMENT FEATURE EXTRACTION -- {args.reconstructor}")
     print(f"  levels {args.levels}, crop {args.crop}, held out {args.held_out}")
     print(f"  signal scaled to {args.photons:.0f} photons, oracle background")
     print()
