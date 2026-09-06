@@ -20,14 +20,26 @@ from pathlib import Path
 HAZE = 0.31   # observed median out-of-focus fraction; see docs/sim2real.md
 
 
+def lines(src: str) -> list[str]:
+    """Split into nbformat ``source`` lines.
+
+    Every element must carry its own trailing newline. A reader concatenates
+    them with no separator, so stripping the newlines collapses the entire cell
+    onto a single line -- which is how this shipped once. Validating by joining
+    the elements with ``"\n"`` hides the bug perfectly, because that is the one
+    thing the reader does not do; ``test_notebook.py`` joins with ``""``.
+    """
+    body = src.strip("\n").split("\n")
+    return [line + "\n" for line in body[:-1]] + body[-1:]
+
+
 def code(src: str) -> dict:
     return {"cell_type": "code", "execution_count": None, "metadata": {},
-            "outputs": [], "source": src.strip("\n").split("\n")}
+            "outputs": [], "source": lines(src)}
 
 
 def md(src: str) -> dict:
-    return {"cell_type": "markdown", "metadata": {},
-            "source": src.strip("\n").split("\n")}
+    return {"cell_type": "markdown", "metadata": {}, "source": lines(src)}
 
 
 INTRO = """

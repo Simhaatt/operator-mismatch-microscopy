@@ -1,0 +1,99 @@
+"""Tests for the generated Colab notebook.
+
+These exist because of a specific failure. `nbformat` stores a cell's text as a
+list of strings which the reader **concatenates with no separator**, so every
+element has to carry its own trailing newline. The generator split on newlines
+and dropped them, and every cell in the notebook rendered as one enormous line.
+
+It shipped because the check that was meant to catch it joined the elements with
+`"\n"` before compiling -- which is the one thing a reader never does, so a
+collapsed cell compiled perfectly. The tests below join with `""`, exactly as
+the reader does. That distinction is the whole point of this file.
+"""
+
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+NB = ROOT / "notebooks" / "colab_gpu_session.ipynb"
+
+
+@pytest.fixture(scope="module")
+def nb() -> dict:
+    if not NB.exists():
+        pytest.skip(f"{NB.name} not generated")
+    return json.loads(NB.read_text(encoding="utf-8"))
+
+
+def render(cell: dict) -> str:
+    """The cell's text as a notebook reader reconstructs it: plain join."""
+    return "".join(cell["source"])
+
+
+def test_no_cell_collapses_to_a_single_line(nb) -> None:
+    """The regression itself."""
+    for i, cell in enumerate(nb["cells"]):
+        if len(cell["source"]) > 1:
+            assert "\n" in render(cell), (
+                f"cell {i} has {len(cell['source'])} source elements but no "
+                f"newline after joining -- the elements are missing their "
+                f"trailing newlines and the cell will render as one line")
+
+
+def test_every_source_element_ends_with_a_newline_except_the_last(nb) -> None:
+    for i, cell in enumerate(nb["cells"]):
+        src = cell["source"]
+        for j, line in enumerate(src[:-1]):
+            assert line.endswith("\n"), f"cell {i} element {j} lacks a newline"
+        assert not src[-1].endswith("\n"), f"cell {i} has a trailing blank line"
+
+
+def test_every_code_cell_compiles_as_the_reader_sees_it(nb) -> None:
+    for i, cell in enumerate(nb["cells"]):
+        if cell["cell_type"] == "code":
+            compile(render(cell), f"cell{i}", "exec")
+
+
+def test_the_notebook_passes_the_haze_fraction_and_never_a_fixed_background(nb) -> None:
+    """A fixed rate is correct at one photon level only; training samples many.
+
+    Getting this wrong is silent -- the models train fine and produce plausible
+    numbers -- and costs a two-hour GPU session to repeat.
+    """
+    # Comments are excluded: one of them warns against --background by name, and
+    # a test that cannot tell advice from a command is worse than no test.
+    text = "\n".join(
+        line
+        for cell in nb["cells"] if cell["cell_type"] == "code"
+        for line in render(cell).split("\n")
+        if not line.lstrip().startswith("#")
+    )
+    assert "--haze-frac" in text
+    assert "--background" not in text
+
+
+def test_the_notebook_requests_a_gpu_and_verifies_the_physics(nb) -> None:
+    text = "\n".join(render(c) for c in nb["cells"] if c["cell_type"] == "code")
+    assert "cuda.is_available" in text, "must refuse to run on CPU"
+    assert "pytest" in text, "must run the suite before trusting a result"
+    assert nb["metadata"].get("accelerator") == "GPU"
+
+
+def test_the_generator_is_deterministic(tmp_path) -> None:
+    """Regenerating must not churn the file, or 'is it current?' is unanswerable."""
+    out = tmp_path / "nb.ipynb"
+    for _ in range(2):
+        subprocess.run([sys.executable, "scripts/make_colab_notebook.py",
+                        "--out", str(out.relative_to(ROOT) if out.is_relative_to(ROOT)
+                                     else out)],
+                       cwd=ROOT, check=True, capture_output=True)
+    first = out.read_text(encoding="utf-8")
+    subprocess.run([sys.executable, "scripts/make_colab_notebook.py",
+                    "--out", str(out)], cwd=ROOT, check=True, capture_output=True)
+    assert out.read_text(encoding="utf-8") == first
