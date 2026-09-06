@@ -78,8 +78,7 @@ ZIP = find('microscopy_code.zip')
 print(f"  data: {NPZ}  ({NPZ.stat().st_size / 1e6:.0f} MB)")
 print(f"  code: {ZIP}  ({ZIP.stat().st_size / 1e3:.0f} KB)")
 
-# Results land beside their inputs rather than in a path you have to remember.
-OUT = NPZ.parent / 'out'
+OUT = NPZ.parent / 'out'      # results land beside their inputs
 OUT.mkdir(exist_ok=True)
 
 MS = Path('/content/ms')
@@ -92,25 +91,21 @@ with zipfile.ZipFile(ZIP) as z:
 (MS / 'data').mkdir(exist_ok=True)
 local = MS / 'data/biosr_gt.npz'
 if not local.exists():
-    # Copy to the runtime disk rather than symlinking into Drive. The 303 MB
-    # file is opened once per script invocation and there are six of them, so
-    # reading it through the Drive FUSE mount every time costs far more than
-    # this one copy.
+    # Local disk, not a Drive symlink: six scripts each open this 303 MB file.
     print('  copying the data to local disk (once)...')
     shutil.copy2(NPZ, local)
 os.chdir(MS)
 print(f"  code {stamp}")
 print(f"  out  {OUT}")
 if 'dirty' in stamp or 'STALE' in stamp:
-    print("  WARNING: this code zip was not built from a clean commit. A stale "
-          "zip is silent -- everything imports and you get last week's results.")
+    print("  WARNING: code zip not built from a clean commit -- rerun "
+          "scripts/pack_code.py. A stale zip is silent.")
 '''
 
 CELL_RUNNER = '''
-# 2 | A runner that makes "Run all" stop at the first real failure.
-#     IPython's `!cmd` swallows non-zero exits, which is exactly wrong here:
-#     a failed training step would otherwise be followed by an extraction step
-#     that loads a stale checkpoint and reports plausible numbers.
+# 2 | Run shell steps so that a failure stops "Run all".
+#     IPython's `!cmd` swallows non-zero exits; a failed training step would be
+#     followed by extraction loading a stale checkpoint and reporting numbers.
 def sh(cmd, label=None):
     t0 = time.time()
     print(f"$ {cmd}\\n")
@@ -134,8 +129,6 @@ print(' ', torch.cuda.get_device_name(0),
 
 CELL_TESTS = '''
 # 3 | The physics must hold on THIS machine before any result is trusted.
-#     The suite pins Airy agreement, FWHM scaling, the exact blur adjoint,
-#     Poisson-Gaussian variance, seed reproducibility and eight bug regressions.
 sh('pip -q install pytest', 'install pytest')
 out = sh('python -m pytest -q', 'test suite')
 line = [l for l in out.strip().split('\\n') if 'passed' in l]
@@ -145,9 +138,8 @@ print('  suite:', line[-1])
 '''
 
 CELL_SMOKE = '''
-# 4 | One-minute GPU smoke test, BEFORE committing hours to training.
-#     The --device cuda path has only ever been exercised on CPU, so prove the
-#     whole chain -- train, checkpoint, load, extract -- on 8 images first.
+# 4 | One-minute smoke test of the whole chain, before committing hours.
+#     The --device cuda path has only ever been exercised on CPU.
 import numpy as np
 d = np.load('data/biosr_gt.npz', allow_pickle=False)
 st = np.asarray([str(x) for x in d['structure']])
@@ -158,15 +150,8 @@ np.savez_compressed('data/tiny_gt.npz', images=d['images'][sel],
 del d
 print(f"  tiny source: {len(sel)} images, {sorted(set(st[sel]))}")
 
-# Real BioSR widefield carries 19-68% of its mean as out-of-focus light
-# (median 31%) against this project's old default of 5%; see docs/sim2real.md.
-#
-# Pass the FRACTION, not a fixed rate. Training samples photons across 15-600
-# per patch, so a flat background would give 75% haze at the dim end and 7% at
-# the bright end. Only the fraction is a property of the microscope. Getting
-# this wrong is not hypothetical -- a flat rate collapsed a mismatch
-# correlation to -0.151 and looked like a finding until the arithmetic was
-# checked.
+# Out-of-focus fraction. Pass the FRACTION, never a fixed --background: photons
+# vary per patch, so a flat rate drifts from 75% haze to 7% across the range.
 HAZE = __HAZE__
 TAG = f'haze{int(HAZE * 100)}'
 
@@ -186,8 +171,7 @@ print('  smoke test passed: 19 features out of the trained-network path')
 
 CELL_TRAIN = '''
 # 5 | THE REAL JOB: train both reconstructors. ~1-2 h total.
-#     --out is on Drive, so every improvement survives a disconnect. Already
-#     finished models are skipped, which makes the notebook safe to re-run.
+#     Writes to Drive as it improves; finished models are skipped on a re-run.
 for model in ('unet', 'unrolled'):
     dst = OUT / f'{model}_{TAG}.pt'
     if dst.exists():
@@ -199,12 +183,7 @@ for model in ('unet', 'unrolled'):
 
 CELL_EXTRACT = '''
 # 6 | Extract the 19-feature caches: two models x two photon levels.
-#     extract_features.py refuses a checkpoint whose training background differs
-#     from this one, because a learned reconstructor evaluated under a different
-#     forward model than it was trained on measures domain shift, not
-#     reliability. Cheaper than the RL caches -- one network forward per sample
-#     instead of 75 Richardson-Lucy iterations -- so the 16-probe residual
-#     family dominates the cost.
+#     A haze-fraction mismatch against the checkpoint is refused, not run.
 for model in ('unet', 'unrolled'):
     for ph, it in ((100, 75), (15, 30)):
         dst = OUT / f'{model}_photons_{ph}_{TAG}.npz'
