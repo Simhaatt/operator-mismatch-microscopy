@@ -230,6 +230,114 @@ Two negatives that are results in their own right:
 
 Full detail: [gate4_results.md](gate4_results.md).
 
+### 6.6 Coverage loss can be bounded, one-sidedly (Gate 5)
+
+Split conformal fixes a threshold at the (1-alpha) quantile of the calibration
+conformity scores. For the acceptance event `A = {s <= q}`, the definition of
+total variation gives `|Q(A) - P(A)| <= d_TV(P, Q)`, hence
+
+    coverage_test >= 1 - alpha - d_TV(P, Q).
+
+Elementary, but the right statement for this setting: the shift that matters is
+in the *conformity score* distribution, not in the images or the features. It
+predicts that a large content shift which happens not to move the score
+distribution is harmless -- which is exactly what holding out ER does.
+
+The contribution is that **the symmetric version is useless and the one-sided
+version is near-tight**. Only mass crossing *above* the threshold costs
+coverage; a shift that moves scores down makes the threshold conservative and
+coverage rises. So take `d+ = sup_t [Q(s>t) - P(s>t)]_+`. Over 10 partition
+seeds on 16 cells:
+
+| quantity | value |
+|---|---|
+| `rho(coverage, -d+)` | **+0.952 +- 0.025** |
+| `rho(coverage, -d_TV)` | -0.064 +- 0.090 |
+| one-sided bound holds | **16/16 on every seed** |
+| mean slack | +0.046 +- 0.006 |
+
+The symmetric statistic is indistinguishable from zero -- not merely weaker,
+*uninformative*. One-sidedness is the whole result.
+
+The bound also survives conditions far outside the simulated grid: it holds on
+real measurements where realised coverage collapses to 0.150 (section 6.8), and
+across all four reconstructors including two learned ones (section 6.9).
+
+### 6.7 The blind estimator is what limits the contribution (Gate 6)
+
+The bound needs labels. The deployable question is whether coverage loss can be
+*anticipated*, so `d+` is replaced by a label-free proxy: the divergence between
+calibration and test distributions of some blind statistic.
+
+Seven candidates, 16 cells, 10 seeds, at the measured 31% out-of-focus fraction:
+
+| blind statistic | `rho(coverage, -blind d+)` |
+|---|---|
+| `qpred` -- the fitted model's own predicted quantile | **+0.616 +- 0.044** |
+| all 19 features (Mahalanobis) | +0.450 +- 0.065 |
+| the 14 OSCR features | +0.375 +- 0.078 |
+| the 5 OTF features | +0.276 +- 0.079 |
+| `r_nominal` alone | +0.083 +- 0.061 |
+
+Two findings. **More features make a novelty distance worse** -- every
+uninformative direction adds variance without signal, so the useful move is a
+low-dimensional statistic rather than a richer one. And **the winner is
+learned**: `qpred` beats every hand-crafted alternative, clear of seed noise.
+
+The OTF-consistency block does not win, which was the hope. It does improve the
+mismatch score's off-distribution correlation with the oracle in 3/3 caches
+(+0.466 -> +0.544, +0.645 -> +0.672, +0.444 -> +0.664), but it does not make a
+better blind estimator and has no detectable effect on content-shift coverage.
+Full detail: [otf_evaluation.md](otf_evaluation.md).
+
+### 6.8 The layer does not transfer to real measurements (Gate 7)
+
+BioSR ships the raw SIM frames, so a real widefield measurement can be built
+alongside the ground truth the error metric uses: the three illumination phases
+of one orientation sum to zero, so averaging them cancels the pattern exactly.
+
+A predictor calibrated entirely on simulation, applied to real measurements,
+gives **coverage 0.150-0.550 against a nominal 0.900** across three forward
+models, and the blind warning signal *inverts* (`rho(r_nominal, error)` -0.098
+to -0.663). The Gate 5 bound holds in all three cases -- slack +0.199, +0.112,
++0.050 -- so it correctly announces the collapse rather than promising coverage
+it cannot deliver. That is the bound's strongest validation, on data the forward
+model never produced.
+
+**The diagnosis is a missing physical term.** Fitting each real measurement as
+`a * blur(GT) + b` (R^2 0.72-0.96 over 182 cells) puts the constant at **19-68%
+of the measurement mean, median 33%**, against the 5% originally simulated. SIM
+reconstruction removes out-of-focus light, so a ground truth derived from it
+carries none and blurring cannot put it back. Real widefield contrast is
+`std/mean = 0.61`; simulated was `2.30`.
+
+This unifies three separate anomalies. CCPs has the highest haze fraction
+(0.676) and is independently the structure with the worst spectral realism, the
+worst conformal coverage, and the only one at 0.000 sim-to-real coverage. One
+mechanism, not three oddities. Full detail: [sim2real.md](sim2real.md),
+[realism_check.md](realism_check.md).
+
+### 6.9 A reconstructor with no fidelity term does not break the mechanism (Gate 8)
+
+The standing objection to sections 6.2 and 6.3 was that residual suppression
+might be an artefact of a data-fidelity term rather than a property of the
+inverse problem. The U-Net has no such term, which made it the decisive case.
+
+It behaves identically to Richardson-Lucy. On the held-out structure, against
+the oracle RMS wavefront error: `r_nominal` +0.727 for both, `r_mean` -0.902 vs
+-0.908, `r_std` -0.890 vs -0.895, `r_curvature` -0.868 vs -0.871. The scope
+does not narrow. The U-Net is also the best of the four reconstructors (mean
+error 0.280 against RL 0.309, TV 0.327).
+
+The **unrolled** network turns out to be the mechanism's extreme case. Its
+forward pass takes explicit gradient steps on `||H x - y||^2` against the
+*nominal* operator, so it minimises precisely what `r_nominal` measures under an
+operator that may be wrong. `r_nominal` collapses to +0.168 and `r_min` flips
+sign to -0.687 -- while `r_gap` more than doubles to +0.860 and `otf_slope`
+reaches +0.868, the highest of any reconstructor. Gate 3's claim demonstrated at
+the limit: **the operator profile earns most exactly where the plain residual is
+most blind.** Full detail: [gpu_reconstructors.md](gpu_reconstructors.md).
+
 ---
 
 ## 7. Claims made and withdrawn
@@ -246,6 +354,26 @@ each was caught by a deliberate check rather than by luck.
   *was* a real artifact, now guarded, but the failure survived fixing it.
 * **"The correlation is an artifact of pooling across severity cells."** Wrong;
   within-cell rho is +0.77.
+* **"TV is a stronger case than RL."** True at 100 photons, reverses at 15.
+* **"Conformal calibration collapses to 0.29 under content shift."** That is the
+  worst of four rotations; ER gives 0.97.
+* **"The OTF features change content-shift coverage."** Withdrawn in *both*
+  directions. Over 10 partition seeds every 14-vs-19 difference is inside the
+  seed noise (|diff| <= 0.052 against a pooled sd of 0.10-0.13). The claim and
+  its own retraction were each a single-seed reading.
+* **"`otf_core` is a better blind estimator."** +0.602 on seed 0, +0.340 +- 0.112
+  over ten -- last place. It was selected on the oracle, and this is what that
+  costs.
+* **"The plain residual is the best blind estimator."** True only at the
+  unrealistic 5% background. At the measured 31% it *changes sign*, +0.604 to
+  -0.398, from joint best to active anti-predictor. The real data agrees with
+  the realistic setting, not the clean one.
+
+**Two standing rules came out of this.** Do not characterise a result until
+every cell of the grid is in -- that pattern cost seven corrections. And report
+every number over at least 10 partition seeds: conformal coverage is
+split-sensitive, and single-seed differences of up to 0.2 on the worst cell are
+pure noise.
 
 ---
 
@@ -325,24 +453,28 @@ is bit-identical to loading from the archives.
 
 ## 10. Status
 
-**Complete:** Gates 0-4b, physics foundation, data pipeline, Richardson-Lucy and
-Poisson-TV reconstructors, U-Net and unrolled network implementations,
-OTF-consistency features.
+**Complete: Gates 0-8.** Physics foundation, data pipeline, four
+reconstructors (Richardson-Lucy, Poisson-TV, U-Net, unrolled) all profiled with
+the same 19 blind features, the coverage bound, the blind-estimator comparison,
+the forward-model realism check, and the sim-to-real transfer test. Everything
+runs over 10 partition seeds. The GPU session is done -- one A100, ~45 minutes.
 
-**In progress:** TV feature extraction, which answers whether the
-residual-suppression mechanism generalises from RL to a second
-fidelity-minimising algorithm.
+**Nothing is GPU-blocked any more.**
 
 **Remaining:**
 
 | work | where | effort |
 |---|---|---|
-| TV mechanism comparison | CPU | ~1 h |
-| Train U-Net + unrolled, extract 19-feature caches | **GPU**, one session | ~2 h |
-| Self-supervised / test-time calibration | CPU | ~1 day |
-| Coverage-loss bound vs support overlap | CPU (theory) | ~1 day, **may not work** |
-| Forward-model realism check against BioSR raw frames | CPU | ~2 h |
-| Structure rotation across all four | cached | minutes |
+| Conformal calibrated **on real measurements** -- does it work in-domain? | CPU | ~2.5 h |
+| Per-structure haze sensitivity (the spread is 0.404) | CPU | ~1 h |
+| `otf_excess_at_cut` split dependence, currently unexplained | CPU | ~1 h |
+| Structured haze term (the fit leaves 4-28% unexplained) | CPU | ~5 h |
+| Photon sweep to pin Gate 2's crossover | CPU | ~1.75 h |
+| Self-supervised / test-time calibration | CPU | ~1 day, **may not work** |
+
+The first is the one open scientific question. Sim-to-real showed the layer does
+not transfer *from simulation*; calibrating in-domain either recovers coverage --
+a usable result -- or establishes a limit no better simulator would fix.
 | Writing | -- | 2-3 weeks |
 
 The U-Net is the scientifically decisive remaining experiment: it has **no
