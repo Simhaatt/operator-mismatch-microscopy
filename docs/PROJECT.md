@@ -230,6 +230,46 @@ Two negatives that are results in their own right:
 
 Full detail: [gate4_results.md](gate4_results.md).
 
+### 6.5b Gate 2's "photon dependence" is haze dependence (Gate 11)
+
+Gate 2 reported that the plain residual is blind to operator mismatch below
+~100 photons and tracks error above it, `rho(r_nominal, e)` rising from +0.332
+at 15 photons to +0.647 at 100. That comparison is **confounded three ways**.
+The original caches fixed `background = 5.0`, so the out-of-focus fraction was
+0.250 at 15 photons and 0.048 at 100; and `n_iter` was 30 and 75. Dose, haze and
+iteration count all moved together.
+
+Holding haze and iterations fixed reverses the direction:
+
+| photons (haze 0.31, `n_iter` 75) | `rho(r_nominal, e)` |
+|---|---|
+| 15 | +0.038 |
+| 30 | −0.087 |
+| 60 | −0.197 |
+| 100 | −0.251 |
+| 200 | −0.289 |
+
+The residual gets monotonically *worse* with dose, not better. And the decisive
+comparison needs no new run -- two existing caches share photon count and
+iteration count and differ only in haze:
+
+| photons | `n_iter` | haze | `rho(r_nominal, e)` |
+|---|---|---|---|
+| 100 | 75 | 0.048 | **+0.647** |
+| 100 | 75 | 0.310 | **−0.251** |
+
+Same dose, same iterations, opposite sign. **The residual's informativeness is
+governed by the out-of-focus fraction, not the photon count.** That is the same
+mechanism as section 6.7's blind-estimator inversion: `r_nominal` is a
+*relative* residual, so a flat pedestal carrying no information about the
+operator inflates its denominator and dilutes the signal until it reverses.
+
+The correction matters beyond tidiness. "Photon-dependent" suggested the
+residual becomes usable in bright, low-noise conditions -- the easy regime. The
+truth is that it becomes usable in *low-background* conditions, and real
+widefield measurements carry 19-68% background (section 6.8), so the regime
+where the plain residual works is the one real data is not in.
+
 ### 6.6 Coverage loss can be bounded, one-sidedly (Gate 5)
 
 Split conformal fixes a threshold at the (1-alpha) quantile of the calibration
@@ -364,6 +404,10 @@ each was caught by a deliberate check rather than by luck.
 * **"`otf_core` is a better blind estimator."** +0.602 on seed 0, +0.340 +- 0.112
   over ten -- last place. It was selected on the oracle, and this is what that
   costs.
+* **"The residual is blind below ~100 photons and tracks error above."**
+  Withdrawn: the comparison confounded dose with haze and iteration count. At
+  matched dose and iterations, haze 0.048 gives +0.647 and haze 0.310 gives
+  −0.251. It is a background effect, not a photon effect. See section 6.5b.
 * **"The plain residual is the best blind estimator."** True only at the
   unrealistic 5% background. At the measured 31% it *changes sign*, +0.604 to
   -0.398, from joint best to active anti-predictor. The real data agrees with

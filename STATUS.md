@@ -74,8 +74,9 @@ Headline results, all reproducible from cached features:
 **Do not re-assert these.** Each was stated from partial data and corrected by a
 fuller run. If you find yourself about to write one, check the grid is complete.
 
-1. ~~"The measurement residual is blind to operator mismatch."~~ True only below
-   ~100 photons; above that it tracks error at rho 0.89–0.92.
+1. ~~"The measurement residual is blind to operator mismatch."~~ Withdrawn, then
+   its *replacement* withdrawn too — see retraction 11. It is not a photon
+   effect at all.
 2. ~~"The residual is doubly blind — floored by shot noise AND driven onto that
    floor by the reconstructor."~~ Mechanism is real (RL reaches 0.994x the floor)
    but does not imply blindness.
@@ -106,6 +107,21 @@ fuller run. If you find yourself about to write one, check the grid is complete.
    model's own predicted quantile) leads at +0.716. The real data agrees with
    the realistic setting: `rho(r_nominal, true error)` is -0.098 to -0.663 on
    real measurements. The deployable signal is *learned*, not hand-crafted.
+
+11. ~~"The residual is blind below ~100 photons and tracks error above."~~ The
+   original caches fixed `background = 5.0`, so haze was 0.250 at 15 photons and
+   0.048 at 100, and `n_iter` was 30 vs 75 — dose, haze and iterations all moved
+   together. At **matched dose and iterations**, haze 0.048 gives +0.647 and
+   haze 0.310 gives **−0.251**: opposite sign. Holding haze fixed, the residual
+   gets monotonically *worse* with dose (+0.038 at 15 ph to −0.289 at 200).
+   It is a **background** effect. This matters because "photon-dependent"
+   implied the residual works in the easy bright regime; it actually works in
+   the low-background regime, which real widefield is not in.
+
+**Fourth standing rule: vary one thing.** Three of eleven retractions came from
+a sweep that moved two parameters at once — `--background` fixed while
+`--photons` varied, and `--n-iter` chosen per photon level. Use `--haze-frac`
+and hold `--n-iter` fixed when the point is to isolate an effect.
 
 **Standing rule adopted: do not characterise a result until every cell of the
 grid is in.** This pattern has now cost seven corrections.
