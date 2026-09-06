@@ -149,3 +149,17 @@ def test_results_come_back_as_one_download_with_a_manifest(nb) -> None:
     for key in ("code_commit", "haze_fraction", "per_cell", "epochs"):
         assert key in text, f"manifest must record {key}"
     assert "val_ssim" in text, "manifest must record what the models scored"
+
+
+def test_the_manifest_reports_what_happened_not_what_was_asked(nb) -> None:
+    """A skipped model may predate the settings this run requested.
+
+    Cell 5 skips a checkpoint that already exists, so recording the notebook's
+    constants would claim a training scale the weights never saw. The manifest
+    has to read the scale back out of each checkpoint's own args and say so when
+    they disagree.
+    """
+    text = render(nb["cells"][-1])
+    assert "trained_per_cell" in text and "trained_epochs" in text,         "manifest must record the scale each checkpoint was ACTUALLY trained at"
+    assert "mismatch" in text, "must detect and report a scale disagreement"
+    assert "'requested'" in text,         "the notebook's own constants belong under a 'requested' key, not as fact"

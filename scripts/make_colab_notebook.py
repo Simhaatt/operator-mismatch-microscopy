@@ -245,11 +245,14 @@ if len(caches) != 4 or len(models) != 2:
                        f"steps are skipped")
 
 # A manifest, so a zip found in six months still says what produced it.
+# Read the training scale back OUT OF EACH CHECKPOINT rather than recording
+# the notebook's constants. A model that was skipped as already-present may
+# have been trained at different settings in an earlier run, and a manifest
+# that reports what was *requested* instead of what happened is worse than no
+# manifest at all.
 manifest = {
     'code_commit': stamp,
-    'haze_fraction': HAZE,
-    'per_cell': PER_CELL,
-    'epochs': EPOCHS,
+    'requested': {'haze_fraction': HAZE, 'per_cell': PER_CELL, 'epochs': EPOCHS},
     'gpu': torch.cuda.get_device_name(0),
     'files': {},
 }
@@ -258,10 +261,25 @@ for f in models + caches:
         'bytes': f.stat().st_size,
         'sha256': hashlib.sha256(f.read_bytes()).hexdigest()[:16],
     }
+mismatch = []
 for m in models:
     ck = torch.load(m, map_location='cpu', weights_only=False)
-    manifest['files'][m.name]['val_ssim'] = ck.get('val_ssim')
-    manifest['files'][m.name]['model'] = ck.get('model')
+    a = ck.get('args', {})
+    manifest['files'][m.name].update(
+        val_ssim=ck.get('val_ssim'), model=ck.get('model'),
+        trained_haze_frac=a.get('haze_frac'), trained_per_cell=a.get('per_cell'),
+        trained_epochs=a.get('epochs'))
+    if (a.get('per_cell'), a.get('epochs')) != (PER_CELL, EPOCHS):
+        mismatch.append(f"{m.name}: trained at per_cell={a.get('per_cell')} "
+                        f"epochs={a.get('epochs')}, this run asked for "
+                        f"{PER_CELL}/{EPOCHS}")
+for c in caches:
+    import numpy as _np
+    d = _np.load(c, allow_pickle=True)
+    manifest['files'][c.name].update(
+        photons=float(d['photons'][0]),
+        haze_frac=float(d['haze_frac'][0]) if 'haze_frac' in d else None,
+        reconstructor=str(d['reconstructor'][0]))
 
 bundle = Path(f'/content/gpu_results_{TAG}.zip')
 with zipfile.ZipFile(bundle, 'w', zipfile.ZIP_DEFLATED) as z:
@@ -269,6 +287,13 @@ with zipfile.ZipFile(bundle, 'w', zipfile.ZIP_DEFLATED) as z:
         z.write(f, f.name)
     z.writestr('MANIFEST.json', json.dumps(manifest, indent=2))
 
+if mismatch:
+    print("WARNING -- a model in this bundle was NOT trained at the settings")
+    print("this run requested. It was skipped as already present. Delete it")
+    print("and re-run cell 5 if you want the requested scale:")
+    for m in mismatch:
+        print(f"    {m}")
+    print()
 print(f"{bundle.name}  {bundle.stat().st_size / 1e6:.1f} MB")
 for name, meta in manifest['files'].items():
     extra = f"  val SSIM {meta['val_ssim']:.4f}" if meta.get('val_ssim') else ''
