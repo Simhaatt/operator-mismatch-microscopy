@@ -170,7 +170,11 @@ def main() -> None:
             scaler.scale(loss).backward()
             scaler.step(opt)
             scaler.update()
-            tot += float(loss) * len(sel)
+            # detach before float(): the tensor tracks gradients and torch
+            # warns that converting it to a scalar may behave unexpectedly.
+            # pyproject.toml promotes UserWarning to an error under pytest, so
+            # this is exactly the trap STATUS.md section 4 records.
+            tot += loss.detach().item() * len(sel)
         sched.step()
 
         model.eval()
