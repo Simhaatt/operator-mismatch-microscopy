@@ -103,11 +103,16 @@ structure resolves it, and the resolution is a result rather than a caveat:
 | ER | −0.724 | −0.728 | −0.415 | −0.710 |
 | CCPs *(held out in training)* | −0.618 | −0.456 | **−0.824** | −0.845 |
 
-RL, TV and the unrolled net are uniform across specimen types, between −0.46 and
-−0.73. **The U-Net is not**, and it varies in a specific direction: the feature
-is worthless on F-actin, moderate on Microtubules and ER, and strongest by far
-on CCPs -- the one structure the network never saw, since it was trained with
-CCPs held out.
+All four vary somewhat, so the accurate statement is comparative rather than
+absolute: the U-Net's range across specimen types is **0.909**, against 0.106
+(RL), 0.273 (TV) and 0.311 (unrolled), and **it is the only one that changes
+sign**. An earlier draft of this section said the other three were "uniform
+between -0.46 and -0.73", which is wrong -- the unrolled net reaches -0.845 on
+CCPs. Building the figure is what caught it.
+
+The U-Net also varies in a specific direction: the feature is worthless on
+F-actin, moderate on Microtubules and ER, and strongest by far on CCPs -- the
+one structure the network never saw, since it was trained with CCPs held out.
 
 So the −0.178 was never "weak in-distribution". It is the pooled average over
 three structures where the value ranges from +0.085 to −0.415, and the −0.824 is

@@ -151,6 +151,13 @@ take `--seeds`.
   inside the repo.
 - **Heredocs truncate** around ~150 lines through this tool. Write long files in
   two or three appended chunks and verify with `ast.parse` after each.
+- **Heredocs also eat backslashes.** A `
+` inside Python source written through
+  a `<<'EOF'` heredoc arrives as a real newline, and `` in `r"$ho$"`
+  vanishes — both produce `SyntaxError: unterminated string literal`, which
+  looks like a truncation bug and is not. This cost three attempts on one
+  figure. **Use the Write tool for any Python containing escapes or LaTeX**,
+  and reserve heredocs for plain text.
 - **`pytest` promotes `UserWarning` to an error** (`pyproject.toml`,
   `filterwarnings`). That is deliberate — it is what makes the PSF Nyquist guard
   testable. Calling `float()` on a grad-tracking tensor trips it; wrap in
