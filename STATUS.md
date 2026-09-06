@@ -265,45 +265,10 @@ because intervals narrow faster than error does. **This one mechanism explains
 CCPs being simultaneously worst on spectral realism, worst on coverage, and
 worst here.** See [docs/sim2real.md](docs/sim2real.md).
 
-### Step 9 — self-supervised calibration (~1 day, needs new code)
+### Step 9 — self-supervised calibration: STRUCK
 
-The remaining improvement, and now the main one. Calibrate from the observed
-data itself so shift cannot bite. Sharper objective than when first proposed:
-**estimate or control `d+` without labels.** Step 2 says the blind proxy tops out
-at +0.740 from a single trivial feature, so this is where the headroom is.
-Reference: Aldridge, Liaudat, Pereyra & McEwen, arXiv:2605.18655 (equivariant
-bootstrapping). Target content shift, where CCPs coverage sits at 0.20-0.48.
-
-## 6b. The GPU session — DONE
-
-One A100 session, **14 min** for the first pass and ~45 min for the properly
-scaled one, against the "3-4 h on a T4, ~1 h on an A100" this file predicted.
-Both models trained at `--haze-frac 0.31`, 32 patches per cell, 60 epochs;
-val SSIM 0.9245 (U-Net) and 0.8888 (unrolled). Caches are in
-`experiments/features19/*_haze31.npz`. Full results:
-[docs/gpu_reconstructors.md](docs/gpu_reconstructors.md).
-
-**The decisive experiment passed.** The U-Net has no data-fidelity term and its
-blind features match Richardson-Lucy's to three decimal places (`r_nominal`
-+0.727 both). The mechanism is a property of the inverse problem, not of
-fidelity-based reconstructors, so the paper's scope does not narrow. The U-Net
-is also the best reconstructor of the four (mean error 0.280).
-
-**The unrolled net is the mechanism's extreme case.** Its explicit, optimised
-fidelity term against the *nominal* PSF drives `r_nominal` blind (+0.168 against
-RL's +0.727) and flips `r_min`'s sign -- and `r_gap` more than doubles to +0.860
-while `otf_slope` reaches +0.868, the highest of any reconstructor. Gate 3's
-claim demonstrated at the limit: the operator profile earns most exactly where
-the plain residual is most blind. Its -0.159 gate-4 score is a property of
-fitting a score whose inputs change sign between splits, not a physics failure.
-
-**Two notes for anyone re-running it.** Training scale was 8 patches per cell
-and 30 epochs by default -- 832 patches, under 3 min, against RL's full 75
-iterations. That rigged the comparison against the networks and the unrolled net
-visibly overfitted (val SSIM peaked epoch 11, fell 0.8675 -> 0.8296). At 32 per
-cell it climbs monotonically to 0.8888, so it was data starvation, not
-architecture. And `otf_excess_at_cut` is unexplained for the U-Net: -0.178
-in-distribution but -0.824 off-distribution, best of the four.
+Not deferred, struck. Three 2025 papers do exactly this, one of them in the
+Poisson regime -- see section 9. The remaining work is the manuscript.
 
 ---
 
@@ -340,20 +305,73 @@ Poisson-Gaussian variance, seed reproducibility, and six specific bug regression
 
 ## 9. Publication plan
 
-**Target: TMLR.** Free, no page limit, and its stated criteria are whether claims
-are supported by evidence and whether findings interest someone — explicitly
-*not* novelty or impact. That fits a project whose novelty is narrow and whose
-strongest results include negatives.
+**Checked against the literature on 2026-09-06, not assumed.** The earlier plan
+in this file rated SIAM Journal on Imaging Sciences as newly viable and
+speculated that TMLR fit best. One of those was right for the wrong reason and
+the other was wrong.
 
-**SIAM Journal on Imaging Sciences** becomes viable now that the coverage bound
-works (free via subscription route). **IEEE TCI** is the fallback but charges
-$175/page beyond ~9 pages, realistically $875–1,225 for a paper this size.
+### The competitive picture is worse than Gate 0 recorded
 
-Post to **arXiv as soon as the GPU session is done** — Gate 0 identified a group
-(Starck, Liaudat) holding all three ingredients of this work, so priority is
-cheap insurance.
+Self-supervised conformal prediction for imaging is now a crowded 2025 line,
+and all of it comes from the group Gate 0 flagged:
 
----
+| work | approach | validated on | operator mismatch? |
+|---|---|---|---|
+| arXiv 2502.05127 (SSVM 2025) | SURE-based self-calibration | denoising, deblurring | no |
+| arXiv 2502.19194 | **Poisson** URE self-calibration | denoising, deblurring | no |
+| arXiv 2605.18655 (MaxEnt 2025) | equivariant bootstrapping | weak lensing | no |
+
+**This kills Step 5 as originally conceived.** "Estimate or control `d+` without
+labels" is precisely what these three do, one of them in the Poisson regime this
+project works in. Entering that race a year late with no differentiator is the
+worst available use of a day. Step 5 is struck, not deferred.
+
+**It also confirms the novelty gap is real and narrow, and says where it is.**
+None of the three addresses forward-operator mismatch; all validate on
+simulated denoising or deblurring, or on FFHQ and fastMRI. The distinctive
+claims here are:
+
+1. **operator mismatch** as the shift axis, not measurement noise;
+2. **real measurements with paired ground truth** -- BioSR raw widefield against
+   SIM ground truth, where the literature uses simulation;
+3. **characterising when the guarantee breaks** rather than proposing a method
+   that works;
+4. the **out-of-focus background** finding, which explains a sim-to-real gap
+   quantitatively.
+
+The paper should be framed around 1-3, *not* as "a conformal method for
+imaging", which is a crowded framing this work would lose in.
+
+### Venue
+
+**TMLR, confirmed on evidence.** Its two criteria are whether claims are
+supported by evidence and whether the findings interest someone -- explicitly
+not novelty or impact, and it exists partly to carry work "not yet accepted in
+mainstream venues". It publishes conformal prediction on imaging inverse
+problems and has conformal expertise on its editorial board. No page limit
+matters for an eleven-gate grid; free matters while the NITC open-access
+question is open. Three headline negatives and eleven recorded retractions are
+an asset there rather than a liability.
+
+**SIIMS is a legitimate second choice and the earlier downgrade was wrong.** It
+publishes applied conformal work -- *Posterior-Variance-Based Error
+Quantification for Inverse Problems in Imaging* (10.1137/23M1546129) uses
+conformal prediction for coverage guarantees on pixelwise error bounds without
+distributional assumptions. The reservation is not scope but disposition: a
+mathematics-leaning venue is a harder sell for a paper whose strongest results
+are failures, and this bound is elementary by its own admission.
+
+**IEEE TCI stays the fallback** and has got more expensive, since the paper grew.
+
+**Rule out optics and bio-imaging venues.** The haze and real-measurement
+results would interest that audience, but the headline is a method whose
+deployable warning signal does not work, and those venues want a working
+instrument.
+
+### Post to arXiv now
+
+Three competing papers appeared in 2025 and one is Poisson-specific. This is no
+longer cheap insurance; it is overdue.
 
 ## 10. Open questions for the human
 
