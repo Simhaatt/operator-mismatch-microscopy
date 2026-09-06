@@ -35,6 +35,8 @@ from src.optics.forward_model import (  # noqa: E402
 )
 from src.optics.psf import PupilConfig, pupil_psf  # noqa: E402
 from src.reconstruction.rl import richardson_lucy  # noqa: E402
+from src.reconstruction.unet import UNet, normalise_measurement  # noqa: E402
+from src.reconstruction.unrolled import UnrolledNet  # noqa: E402
 from src.reconstruction.tv import poisson_tv  # noqa: E402
 from src.reliability.features import (  # noqa: E402
     FEATURE_NAMES, OTF_FEATURE_NAMES, oscr_features,
@@ -59,7 +61,11 @@ def main() -> None:
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--source", default=None,
                     help="compact .npz export; defaults to the zip archives")
-    ap.add_argument("--reconstructor", choices=("rl", "tv"), default="rl")
+    ap.add_argument("--reconstructor", choices=("rl", "tv", "unet", "unrolled"),
+                    default="rl")
+    ap.add_argument("--checkpoint", default=None,
+                    help="trained .pt from train_reconstructor.py; required for "
+                         "--reconstructor unet/unrolled")
     ap.add_argument("--tv-weight", type=float, default=None,
                     help="TV regularisation strength; selected on the nominal "
                          "operator if omitted, then held fixed across all cells")
@@ -127,6 +133,37 @@ def main() -> None:
         def reconstruct(y):
             return poisson_tv(y, psf0, args.tv_iter, weight=weight,
                               background=noise.background, prox_iter=args.tv_prox_iter)
+    elif args.reconstructor in ("unet", "unrolled"):
+        if not args.checkpoint:
+            ap.error(f"--reconstructor {args.reconstructor} needs --checkpoint")
+        ck = torch.load(args.checkpoint, map_location=device, weights_only=False)
+        if ck["model"] != args.reconstructor:
+            raise ValueError(f"checkpoint holds a {ck['model']!r} but "
+                             f"--reconstructor is {args.reconstructor!r}")
+        trained_bg = float(ck["args"].get("background", 5.0))
+        if abs(trained_bg - args.background) > 1e-6:
+            raise ValueError(
+                f"checkpoint was trained at background={trained_bg} but this "
+                f"extraction uses {args.background}. A learned reconstructor "
+                f"evaluated under a different forward model than it was trained "
+                f"on measures domain shift, not reliability. Re-train or match.")
+        net = (UNet(base=32, depth=3) if args.reconstructor == "unet"
+               else UnrolledNet(n_stages=5, width=32))
+        net.load_state_dict(ck["state_dict"])
+        net = net.to(device=device, dtype=dtype).eval()
+        print(f"  loaded {args.reconstructor} from {args.checkpoint} "
+              f"(val SSIM {ck.get('val_ssim', float('nan')):.4f}, "
+              f"background {trained_bg})")
+
+        def reconstruct(y):
+            # Exactly the convention train_reconstructor.py used, or xhat_std
+            # would land on a different scale from the classical reconstructors
+            # and the comparison would measure units rather than reliability.
+            with torch.no_grad():
+                if args.reconstructor == "unet":
+                    yn, sc = normalise_measurement(y)
+                    return net(yn) * sc
+                return net(y, psf0)
     else:
         def reconstruct(y):
             return richardson_lucy(y, psf0, args.n_iter, background=noise.background,

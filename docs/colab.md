@@ -30,7 +30,28 @@ Put both files in a Drive folder, e.g. `MyDrive/microscopy/`. A 303 MB upload
 over a home connection is minutes, and it persists across Colab sessions --
 unlike the runtime's own disk.
 
-## Notebook
+## Notebook — run these cells in order
+
+### 0. Before you start
+
+Two things were missing until commit `a56bebe`/`HEAD` and would each have cost a
+whole session:
+
+* `train_reconstructor.py` hardcoded `background=5.0`. It now takes
+  `--background`, and **you must pass 45** -- see below.
+* `extract_features.py` had no way to *use* a trained network. It now takes
+  `--reconstructor unet|unrolled --checkpoint <.pt>`, and refuses a checkpoint
+  whose training background differs from the extraction background, because a
+  learned reconstructor evaluated under a different forward model than it was
+  trained on measures domain shift rather than reliability.
+
+**Why `--background 45` and not the default 5.** Fitting real BioSR widefield
+measurements as `a*blur(GT) + b` puts the constant term at 19-68% of the
+measurement mean (median 31%); the old default is 5%. SIM reconstruction removes
+out-of-focus light, so a ground truth derived from it carries none and blurring
+cannot put it back. See [sim2real.md](sim2real.md). The RL and TV caches you will
+compare against are `experiments/features19/*_bg45.npz`, extracted at 45, so
+training at anything else makes the comparison meaningless.
 
 ```python
 # 1. Mount Drive and unpack the code
@@ -39,59 +60,93 @@ drive.mount('/content/drive')
 !mkdir -p /content/ms && cd /content/ms && unzip -oq /content/drive/MyDrive/microscopy/microscopy_code.zip
 !cp /content/drive/MyDrive/microscopy/biosr_gt.npz /content/ms/data/
 %cd /content/ms
+!mkdir -p /content/drive/MyDrive/microscopy/out
 ```
 
 ```python
-# 2. Check what GPU was allocated. Colab Pro gives a "premium" GPU subject to
-#    availability, so this may be an A100, an L4 or a V100 -- it matters for
-#    timing, not for correctness.
+# 2. What GPU did we get? Matters for timing, not correctness.
 !nvidia-smi --query-gpu=name,memory.total --format=csv
 import torch; print(torch.__version__, torch.cuda.is_available())
 ```
 
 ```python
-# 3. Confirm the physics still holds on this machine before trusting any result.
+# 3. Confirm the physics holds on this machine before trusting any result.
 !pip -q install pytest
-!python -m pytest -q
+!python -m pytest -q          # expect 170 passed
 ```
 
 ```python
-# 4. Feature extraction, which is FFT-bound and gains ~4-5x from GPU
-!python scripts/extract_features.py --photons 100 --n-iter 75 --device cuda \
-    --source data/biosr_gt.npz --out experiments/features/photons_100.npz
+# 4. CHEAP GPU SMOKE TEST -- do this before committing 2 hours.
+#    The --device cuda path in extract_features.py has only ever been exercised
+#    on CPU here, so prove it works on 8 images first. ~1 minute.
+import numpy as np
+d = np.load('data/biosr_gt.npz', allow_pickle=False)
+st = np.asarray([str(x) for x in d['structure']]); ce = np.asarray([str(x) for x in d['cell']])
+sel = [i for s in sorted(set(st)) for i in np.where(st == s)[0][:2]]
+np.savez_compressed('data/tiny_gt.npz', images=d['images'][sel],
+                    structure=st[sel], cell=ce[sel], pixel_um=d['pixel_um'])
 ```
 
 ```python
-# 5. Calibration runs on cached features in seconds
-!python scripts/gate4_calibration.py --features experiments/features/photons_100.npz
-!python scripts/gate4b_repair.py   --features experiments/features/photons_100.npz
+!python scripts/train_reconstructor.py --model unet --device cuda --amp     --background 45 --limit-cells 4 --epochs 1 --per-cell 1 --patch 128     --out /content/tiny_unet.pt
+!python scripts/extract_features.py --reconstructor unet --checkpoint /content/tiny_unet.pt     --background 45 --device cuda --crop 64 --kernel 31 --photons 100     --source data/tiny_gt.npz --out /content/tiny.npz
+```
+
+If either fails, stop and fix it -- do not train the real models first.
+
+```python
+# 5. Train both models. THE REAL JOB. --out points at Drive so a disconnect
+#    does not lose the weights; Colab recycles the runtime disk without warning.
+#    ~1-2 h total depending on the GPU allocated.
+D = '/content/drive/MyDrive/microscopy/out'
+!python scripts/train_reconstructor.py --model unet --device cuda --amp     --background 45 --out {D}/unet_bg45.pt
+!python scripts/train_reconstructor.py --model unrolled --device cuda --amp     --background 45 --out {D}/unrolled_bg45.pt
 ```
 
 ```python
-# 6. Copy results back to Drive before the runtime is recycled
-!cp -r experiments /content/drive/MyDrive/microscopy/
+# 6. Extract their 19-feature caches, at the SAME background. Four runs.
+#    Cheaper than the RL caches -- one network forward per sample instead of 75
+#    Richardson-Lucy iterations -- so the 16-probe residual family dominates.
+for model in ('unet', 'unrolled'):
+    for ph, it in ((100, 75), (15, 30)):
+        !python scripts/extract_features.py --reconstructor {model}             --checkpoint {D}/{model}_bg45.pt --background 45 --device cuda             --crop 256 --photons {ph} --n-iter {it} --source data/biosr_gt.npz             --out {D}/{model}_photons_{ph}_bg45.npz
 ```
 
-## What to spend GPU time on
+```python
+# 7. Copy everything back. The caches are ~300 KB each; that is all you need
+#    locally. Leave the .pt weights in Drive.
+!ls -la {D}
+```
 
-The remaining compute is roughly **3-4 hours on a T4, ~1 hour on an A100**, having
-collapsed from an earlier estimate of 95 T4-hours: Gates 3 and 4 are done, and
-ablations, structure rotations and calibration variants are all re-partitions of
-cached features rather than re-runs.
+## Back on the laptop
 
-The two jobs that genuinely need the GPU:
+Copy the four `*_bg45.npz` caches into `experiments/features19/`, then all the
+analysis is instant:
 
-1. **U-Net reconstructor** -- the scientifically decisive one. It has no explicit
-   data-fidelity term, so it is the single case that could overturn the
-   "reconstructor drives its own residual onto the noise floor" mechanism
-   established for Richardson-Lucy and Poisson-TV.
-2. **Unrolled network** -- data consistency made explicit, the other end of the
-   spectrum.
+```bash
+python scripts/gate5_bound.py --features experiments/features19/*_bg45.npz --seeds 10
+```
 
-Feature extraction only speeds up ~4-5x (it is FFT and memory-bandwidth bound,
-not compute bound), so on GPU it becomes the dominant cost. Training speeds up
-20-40x. Plan accordingly: batch the training jobs, and do not bother moving the
-calibration work, which is already instantaneous.
+```bash
+python scripts/rotate_structures.py --features experiments/features19/unet_photons_100_bg45.npz --seeds 10
+```
+
+**The question the U-Net answers.** It has no explicit data-fidelity term, so it
+is the one reconstructor that could overturn the mechanism established for
+Richardson-Lucy and Poisson-TV. If its blind features behave like theirs, the
+mechanism is a property of the inverse problem; if not, it is a property of
+fidelity-term reconstructors and the paper's scope narrows to those.
+
+**What it does not answer.** The sim-to-real transfer failure
+([sim2real.md](sim2real.md)) affects every claim in the project rather than one
+mechanism, and no amount of GPU time touches it.
+
+**A simplification to state, not discover in review.** `UnrolledNet.forward`
+takes a least-squares residual `apply_psf(x, psf) - y` with no background term,
+so it implicitly assumes zero background. It is self-consistent between training
+and evaluation -- the learned step sizes and prox absorb the offset -- but at
+`background=45` its data-fidelity gradient is biased in a way it must learn
+around.
 
 ## Reproducibility across machines
 
