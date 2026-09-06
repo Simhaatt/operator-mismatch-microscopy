@@ -222,3 +222,50 @@ in absolute scale by ~25%. Its *spectral content* is off by a factor of ~1.9 for
 three structures and ~5 for CCPs. That is a real and quantified limitation, not
 a fiction -- and it is now a measured number a reviewer can be pointed at rather
 than an assumption.
+
+
+---
+
+## 5. How much does any of this depend on the haze fraction?
+
+A single global out-of-focus fraction is a simplification: the per-structure
+medians span **0.271 (ER) to 0.676 (CCPs)**, a spread of 0.404 over 182 cells.
+That raises the obvious worry that the project's conclusions are artefacts of
+one parameter choice. Five settings, spanning haze 0.048 to a real-data median
+of 0.40, say otherwise for two of the three conclusions and confirm it for the
+third:
+
+| setting | `rho(cov, −d+)` | bound | held-out coverage | best blind |
+|---|---|---|---|---|
+| simulated, 0.048 | +0.908 ± 0.056 | 8/8 | 0.747-0.792 | `residual` +0.604 |
+| simulated, 0.310 | +0.959 ± 0.034 | 8/8 | 0.752-0.779 | `residual` **−0.398** |
+| simulated, 0.310, 16 cells | +0.952 ± 0.025 | 16/16 | 0.752-0.779 | `qpred` +0.616 |
+| four reconstructors, 0.310 | +0.933 ± 0.027 | 16/16 | 0.731-0.776 | `qpred` +0.700 |
+| **real**, median 0.40 | +0.933 ± 0.053 | 16/16 | 0.578-0.843 | `qpred` **+0.222** |
+
+**The bound is insensitive.** `rho(coverage, −d+)` stays in +0.908 to +0.959 and
+the one-sided bound holds every cell on every seed across a 6.5x change in haze
+and across the simulation-to-real boundary. Nothing about it rests on the
+parameter.
+
+**Content-shift coverage is insensitive in simulation** -- 0.731 to 0.792
+everywhere -- and only widens on real measurements (0.578 to 0.843), where the
+cause is the reconstructor rather than the haze (see
+[sim2real.md](sim2real.md)).
+
+**The blind estimator is extremely sensitive**, which is the whole content of
+retraction 10: the residual goes +0.604 to −0.398 between 5% and 31% haze, and
+`qpred` falls from +0.616 simulated to +0.222 real. Any blind-estimator result
+quoted without its haze fraction is uninterpretable, which is why that is now a
+standing rule.
+
+### Why the per-structure variant was not run
+
+The natural next step would be to extract at a per-structure fraction rather
+than a pooled median. It was considered and rejected: the two conclusions that
+could plausibly move are demonstrably flat across a 6.5x global change, so a
+refinement within that range is very unlikely to shift them, and the third
+conclusion -- the blind estimator -- already fails on real data at any fraction.
+The honest statement is that a single global fraction is a simplification whose
+consequences have been measured, not one that has been assumed away. Recorded
+here rather than left as an untried option.
