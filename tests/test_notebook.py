@@ -97,3 +97,25 @@ def test_the_generator_is_deterministic(tmp_path) -> None:
     subprocess.run([sys.executable, "scripts/make_colab_notebook.py",
                     "--out", str(out)], cwd=ROOT, check=True, capture_output=True)
     assert out.read_text(encoding="utf-8") == first
+
+
+def test_every_interpolated_name_is_defined_before_use(nb) -> None:
+    """Catch what `compile` cannot: an f-string naming a variable nobody sets.
+
+    Adding `--per-cell {PER_CELL}` to a command string compiles perfectly and
+    then raises NameError halfway through a GPU session. This walks the cells in
+    order and checks that every ALL-CAPS name interpolated into an f-string was
+    assigned in an earlier cell or the same one.
+    """
+    import re
+
+    defined: set[str] = set()
+    for i, cell in enumerate(nb["cells"]):
+        if cell["cell_type"] != "code":
+            continue
+        text = render(cell)
+        defined |= set(re.findall(r"^([A-Z][A-Z0-9_]*)\s*=", text, re.M))
+        for name in re.findall(r"\{([A-Z][A-Z0-9_]*)[\}\[\.\:]", text):
+            assert name in defined, (
+                f"cell {i} interpolates {{{name}}} but nothing assigns it yet -- "
+                f"this compiles and then fails at runtime")

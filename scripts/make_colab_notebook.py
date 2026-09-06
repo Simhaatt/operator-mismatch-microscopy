@@ -18,6 +18,16 @@ import json
 from pathlib import Path
 
 HAZE = 0.31   # observed median out-of-focus fraction; see docs/sim2real.md
+# Measured on a Colab GPU: training took 1.4 min (U-Net) and 2.3 min (unrolled)
+# at the old defaults of 8 patches per cell and 30 epochs, against the ~2 h
+# STATUS.md predicted for a T4. That left the learned reconstructors trained on
+# 832 patches out of the ~560,000 distinct 256-crops the 104 training cells
+# admit, while RL ran at its full 75 iterations and TV at a tuned weight. The
+# comparison was rigged against the networks, which matters because the U-Net is
+# the decisive experiment. 32 per cell and 60 epochs is 8x the work and still
+# only ~30 min.
+PER_CELL = 32
+EPOCHS = 60
 
 
 def lines(src: str) -> list[str]:
@@ -55,9 +65,11 @@ Put exactly **two files** anywhere in your Drive -- this notebook finds them:
 * `biosr_gt.npz` (303 MB)
 * `microscopy_code.zip` (~110 KB, rebuilt with `python scripts/pack_code.py`)
 
-Roughly 1.5-3 h depending on the GPU allocated. Weights are written straight to
-Drive as they improve, so a disconnect costs time but not work. Re-running the
-notebook skips anything already finished.
+Around 45 minutes: ~30 min training, ~10 min extraction. Weights are written
+straight to Drive as they improve, so a disconnect costs time but not work.
+
+**Re-running skips anything already finished** -- delete the `.pt` and `.npz`
+files under `out/` first if you want to redo them.
 """
 
 CELL_FIND = '''
@@ -166,6 +178,11 @@ print(f"  tiny source: {len(sel)} images, {sorted(set(st[sel]))}")
 # vary per patch, so a flat rate drifts from 75% haze to 7% across the range.
 HAZE = __HAZE__
 TAG = f'haze{int(HAZE * 100)}'
+# Training scale. The old defaults (8 per cell, 30 epochs) trained the networks
+# on 832 patches in under 3 min while RL ran its full 75 iterations -- a
+# comparison rigged against the very models the U-Net experiment turns on.
+PER_CELL = __PER_CELL__
+EPOCHS = __EPOCHS__
 
 sh('python scripts/train_reconstructor.py --model unet --device cuda --amp '
    f'--haze-frac {HAZE} --limit-cells 4 --epochs 1 --per-cell 1 --patch 128 '
@@ -179,18 +196,21 @@ n = len(np.load('/content/tiny.npz', allow_pickle=True)['feature_names'])
 if n != 19:
     raise RuntimeError(f'expected 19 features, got {n}')
 print('  smoke test passed: 19 features out of the trained-network path')
-'''.replace('__HAZE__', str(HAZE))   # literal % in the comments rules out %-formatting
+'''.replace('__HAZE__', str(HAZE)
+      ).replace('__PER_CELL__', str(PER_CELL)
+      ).replace('__EPOCHS__', str(EPOCHS))   # literal % rules out %-formatting
 
 CELL_TRAIN = '''
-# 5 | THE REAL JOB: train both reconstructors. ~1-2 h total.
-#     Writes to Drive as it improves; finished models are skipped on a re-run.
+# 5 | Train both reconstructors, ~30 min. Writes to Drive as it improves.
+#     FINISHED MODELS ARE SKIPPED -- delete the .pt files to retrain.
 for model in ('unet', 'unrolled'):
     dst = OUT / f'{model}_{TAG}.pt'
     if dst.exists():
         print(f"  {dst.name} already present -- skipping (delete it to retrain)")
         continue
     sh(f'python scripts/train_reconstructor.py --model {model} --device cuda '
-       f'--amp --haze-frac {HAZE} --out "{dst}"', f'train {model}')
+       f'--amp --haze-frac {HAZE} --per-cell {PER_CELL} --epochs {EPOCHS} '
+       f'--out "{dst}"', f'train {model}')
 '''
 
 CELL_EXTRACT = '''
