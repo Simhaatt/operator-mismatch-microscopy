@@ -39,7 +39,8 @@ from src.reconstruction.unet import UNet, normalise_measurement  # noqa: E402
 from src.reconstruction.unrolled import UnrolledNet  # noqa: E402
 
 
-def make_pairs(entries, psf0, cfg, n_per_cell, patch, device, dtype, tag, seed=0):
+def make_pairs(entries, psf0, cfg, n_per_cell, patch, device, dtype, tag,
+               background=5.0, seed=0):
     """Pre-generate (measurement, target) patches under the nominal operator."""
     rng = np.random.default_rng(seed)
     ys, xs = [], []
@@ -53,7 +54,8 @@ def make_pairs(entries, psf0, cfg, n_per_cell, patch, device, dtype, tag, seed=0
             if float(x.mean()) < 1e-4:
                 continue  # skip empty background crops
             photons = float(rng.uniform(*BIOSR_PHOTON_RANGE))
-            noise = NoiseConfig(photons=photons, background=5.0, read_noise_e=1.5)
+            noise = NoiseConfig(photons=photons, background=background,
+                                read_noise_e=1.5)
             y = simulate_measurement(x, psf0, noise, seed=sample_seed(tag, e.key, j))
             ys.append(y.cpu())
             xs.append(x.cpu())
@@ -76,6 +78,14 @@ def main() -> None:
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--amp", action="store_true", help="mixed precision (GPU only)")
     ap.add_argument("--limit-cells", type=int, default=None)
+    ap.add_argument("--background", type=float, default=5.0,
+                    help="constant additive rate, in photons. MUST match the "
+                         "background the comparison feature caches were "
+                         "extracted at, or the reconstructor is trained on a "
+                         "different forward model than it is evaluated under. "
+                         "Real BioSR widefield carries 19-68%% of its mean as "
+                         "out-of-focus light against this default's 5%%; see "
+                         "docs/sim2real.md. Use 45 to match the *_bg45 caches.")
     ap.add_argument("--out", default="experiments/models/unet.pt")
     args = ap.parse_args()
 
@@ -93,8 +103,10 @@ def main() -> None:
     print(f"model={args.model} device={args.device} patch={args.patch} "
           f"cells: train={len(train)} val={len(val)}")
     print("  pre-generating training pairs (fixed seeds, bit-reproducible)...")
-    ytr, xtr = make_pairs(train, psf0, cfg, args.per_cell, args.patch, device, dtype, "train")
-    yva, xva = make_pairs(val, psf0, cfg, 2, args.patch, device, dtype, "val")
+    ytr, xtr = make_pairs(train, psf0, cfg, args.per_cell, args.patch, device,
+                          dtype, "train", background=args.background)
+    yva, xva = make_pairs(val, psf0, cfg, 2, args.patch, device, dtype, "val",
+                          background=args.background)
     print(f"  {len(ytr)} training patches, {len(yva)} validation")
 
     model = (UNet(base=32, depth=3) if args.model == "unet"
