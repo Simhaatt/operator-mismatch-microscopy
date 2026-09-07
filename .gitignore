@@ -19,3 +19,6 @@ figures/*
 *.npz
 *.pt
 *.ckpt
+
+# Handoff bundle: built from handoff/*.md, so the markdown is the source.
+microscopy_handoff.zip
