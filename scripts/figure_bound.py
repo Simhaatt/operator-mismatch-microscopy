@@ -70,17 +70,16 @@ def main() -> None:
             (r"$\mathrm{coverage} \geq 1-\alpha-d^+$", "same cells, symmetric bound")):
         ax.plot(grid, 1 - alpha - grid, color="0.35", lw=1.0, ls="--",
                 label=r"bound $1-\alpha-d$", zorder=1)
-        ax.axhline(1 - alpha, color="0.65", lw=0.8, ls=":", zorder=0)
+        ax.axhline(1 - alpha, color="0.65", lw=0.8, ls=":", zorder=0,
+                   label=r"nominal $1-\alpha$")
         ax.set_xlabel(xlabel)
         ax.set_title(title)
         ax.set_xlim(-0.03, 1.0)
         ax.set_ylim(-0.03, 1.05)
     axes[0].set_ylabel("realised coverage")
+    # No floating annotations: whatever needs saying about these panels belongs
+    # in the caption, where a reader expects it and where it can be edited.
     axes[0].legend(loc="lower left", handletextpad=0.4, borderpad=0.2)
-    axes[0].text(0.97, 1 - alpha + 0.03, r"nominal $1-\alpha$", fontsize=6,
-                 color="0.45", ha="right", va="bottom")
-    axes[1].text(0.5, 0.06, "no relationship:\nvalid but uninformative",
-                 fontsize=6.5, color="0.35", ha="center")
 
     out = style.save(fig, args.name, style.stamp(
         f"{n_held}/{n_tot} cells above the one-sided bound",

@@ -69,13 +69,12 @@ def save(fig, name: str, provenance: str | None = None) -> Path:
     to be trusted.
     """
     FIGDIR.mkdir(parents=True, exist_ok=True)
+    fig.tight_layout()
     if provenance:
-        # Reserve a strip first, or the stamp lands on top of the x-axis label.
-        fig.tight_layout(rect=(0, 0.045, 1, 1))
-        fig.text(0.005, 0.004, provenance, fontsize=4.5, color="0.55",
-                 ha="left", va="bottom")
-    else:
-        fig.tight_layout()
+        # Printed, not stamped. A figure going into a paper should carry no
+        # marks the caption cannot; the provenance still needs to exist, so it
+        # goes to stdout where it can be pasted into a caption or a log.
+        print(f"  provenance: {provenance}")
     out = FIGDIR / f"{name}.pdf"
     fig.savefig(out)
     fig.savefig(out.with_suffix(".png"))
