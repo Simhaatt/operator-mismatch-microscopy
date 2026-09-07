@@ -22,3 +22,6 @@ figures/*
 
 # Handoff bundle: built from handoff/*.md, so the markdown is the source.
 microscopy_handoff.zip
+
+# Copyrighted third-party paper: cite it, do not redistribute it.
+s41592-020-01048-5.pdf
