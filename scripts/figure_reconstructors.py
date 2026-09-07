@@ -47,7 +47,7 @@ PRETTY = {"r_nominal": r"$r_{\mathrm{nom}}$", "r_min": r"$r_{\min}$",
           "r_curvature": "curvature", "r_gap": r"$r_{\mathrm{gap}}$",
           "otf_slope": "OTF slope"}
 STRUCTURES = ["F-actin", "Microtubules", "ER", "CCPs"]
-SHORT = {"F-actin": "F-act", "Microtubules": "MT", "ER": "ER", "CCPs": "CCPs*"}
+SHORT = {"F-actin": "F-act", "Microtubules": "MT", "ER": "ER", "CCPs": "CCPs"}
 
 
 def load(features: Path, cache: str):
@@ -79,7 +79,7 @@ def main() -> None:
     data = {lab: load(features, c) for lab, c in CACHES}
     data = {k: v for k, v in data.items() if v is not None}
 
-    fig, (axl, axr) = plt.subplots(1, 2, figsize=(6.8, 2.7),
+    fig, (axl, axr) = plt.subplots(1, 2, figsize=(6.8, 2.9),
                                    gridspec_kw={"width_ratios": [1.3, 1]})
 
     # ---- left: key features, held-out structure --------------------------
@@ -95,9 +95,8 @@ def main() -> None:
     axl.set_xticklabels([PRETTY[f] for f in FEATURES])
     axl.set_ylabel(r"$\rho(\mathrm{feature},\ \mathrm{oracle\ mismatch})$")
     axl.set_title("Held-out structure: U-Net tracks RL")
-    axl.set_ylim(-1.05, 1.15)
-    axl.legend(loc="upper center", ncol=4, columnspacing=0.9,
-               handletextpad=0.4, handlelength=1.1)
+    axl.set_ylim(-1.05, 1.0)
+
 
     # ---- right: the one feature that is content-dependent ----------------
     i_ord = np.arange(len(STRUCTURES))
@@ -116,8 +115,8 @@ def main() -> None:
                    fontsize=7)
     axr.set_title("Only the U-Net changes sign with content")
     axr.set_ylim(-1.0, 0.35)
-    axr.text(0.02, 0.03, "* held out when the\n  networks were trained",
-             transform=axr.transAxes, fontsize=6, color="0.4", va="bottom")
+
+    style.legend_above(fig, axl, ncol=4)
 
     out = style.save(fig, args.name, style.stamp(
         "100 photons, haze 0.31", "features19/*.npz"))

@@ -49,7 +49,7 @@ def main() -> None:
     style.use()
     import matplotlib.pyplot as plt
 
-    fig, axes = plt.subplots(1, 2, figsize=(6.6, 2.7), sharey=True)
+    fig, axes = plt.subplots(1, 2, figsize=(6.6, 2.9), sharey=True)
     alpha, n_tot, n_held = 0.1, 0, 0
     for fname, label, colour, marker in SETTINGS:
         p = Path(args.dir) / fname
@@ -77,9 +77,7 @@ def main() -> None:
         ax.set_xlim(-0.03, 1.0)
         ax.set_ylim(-0.03, 1.05)
     axes[0].set_ylabel("realised coverage")
-    # No floating annotations: whatever needs saying about these panels belongs
-    # in the caption, where a reader expects it and where it can be edited.
-    axes[0].legend(loc="lower left", handletextpad=0.4, borderpad=0.2)
+    style.legend_above(fig, axes[0], ncol=5)
 
     out = style.save(fig, args.name, style.stamp(
         f"{n_held}/{n_tot} cells above the one-sided bound",

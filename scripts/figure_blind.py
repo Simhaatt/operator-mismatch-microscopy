@@ -52,7 +52,7 @@ def main() -> None:
     style.use()
     import matplotlib.pyplot as plt
 
-    fig, ax = plt.subplots(figsize=(6.6, 2.9))
+    fig, ax = plt.subplots(figsize=(6.6, 3.0))
     x = np.arange(len(keys))
     w = 0.38
     for off, src, label, colour in ((-w / 2, sim, "simulated (16 cells)", style.SIM),
@@ -66,16 +66,12 @@ def main() -> None:
     # The threshold is not arbitrary: below it a statistic explains less than a
     # quarter of the coverage ordering, which is no use as a deployment warning.
     ax.axhspan(-1, 0.25, color="0.85", alpha=0.35, zorder=0)
-    ax.text(-0.45, -0.53,
-            "shaded: below 0.25 a statistic explains too little of the coverage"
-            " ordering to serve as a deployment warning",
-            fontsize=6, color="0.4", ha="left", va="bottom")
     ax.set_xticks(x)
     ax.set_xticklabels([LABELS[k] for k in keys])
     ax.set_ylabel(r"$\rho(\mathrm{coverage},\, -d^+_{\mathrm{blind}})$")
     ax.set_title("Can coverage loss be anticipated without ground truth?")
     ax.set_ylim(-0.55, 0.8)
-    ax.legend(loc="upper right")
+    style.legend_above(fig, ax, ncol=2)
 
     out = style.save(fig, args.name, style.stamp(
         "10 partition seeds, mean +- sd",

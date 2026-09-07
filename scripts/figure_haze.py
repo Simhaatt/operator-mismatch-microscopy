@@ -79,7 +79,7 @@ def panel_measured(ax, hz) -> None:
     ax.set_ylabel("out-of-focus fraction")
     ax.set_title(f"Measured, {len(hz['cells'])} real cells")
     ax.set_ylim(0, 0.9)
-    ax.legend(loc="upper left")
+
 
 
 def panel_matched(ax, features: Path) -> None:
@@ -100,7 +100,7 @@ def panel_matched(ax, features: Path) -> None:
     ax.set_title("Haze alone flips the sign")
     ax.set_ylim(-0.45, 0.8)
     ax.set_xlim(0, 0.42)
-    ax.legend(loc="upper right")
+
 
 
 def panel_dose(ax, features: Path) -> None:
@@ -120,9 +120,6 @@ def panel_dose(ax, features: Path) -> None:
     ax.set_xlabel("photons (haze 0.31, 75 iters)")
     ax.set_title("Dose runs the other way")
     ax.set_ylim(-0.45, 0.8)
-    ax.text(0.5, 0.96, "the retracted claim predicted\nan increase with dose",
-            transform=ax.transAxes, fontsize=6, color="0.4",
-            ha="center", va="top")
     return xs, ys
 
 
@@ -139,10 +136,18 @@ def main() -> None:
     hz = json.loads(Path(args.haze).read_text(encoding="utf-8"))
     features = Path(args.features)
 
-    fig, (axl, axm, axr) = plt.subplots(1, 3, figsize=(7.0, 2.5))
+    fig, (axl, axm, axr) = plt.subplots(1, 3, figsize=(7.0, 2.7))
     panel_measured(axl, hz)
     panel_matched(axm, features)
     xs, ys = panel_dose(axr, features)
+    # Two panels carry different series, so their legends are merged above the
+    # figure rather than sitting inside either one.
+    h = axl.get_legend_handles_labels()[0] + axm.get_legend_handles_labels()[0]
+    l = axl.get_legend_handles_labels()[1] + axm.get_legend_handles_labels()[1]
+    fig.legend(h, l, loc="upper center", bbox_to_anchor=(0.5, 1.0), ncol=4,
+               frameon=False, handletextpad=0.4, columnspacing=1.2,
+               borderaxespad=0.1)
+    fig.tight_layout(rect=(0, 0, 1, 0.90))
 
     out = style.save(fig, args.name, style.stamp(
         Path(args.haze).name, "features19/*.npz", "n_iter fixed at 75"))

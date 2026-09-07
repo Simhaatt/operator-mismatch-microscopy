@@ -69,7 +69,11 @@ def save(fig, name: str, provenance: str | None = None) -> Path:
     to be trusted.
     """
     FIGDIR.mkdir(parents=True, exist_ok=True)
-    fig.tight_layout()
+    # Only lay out if nobody already did. A figure-level legend reserves a top
+    # strip with tight_layout(rect=...), and calling tight_layout() again here
+    # would discard that reservation and put the legend back over the titles.
+    if not fig.legends:
+        fig.tight_layout()
     if provenance:
         # Printed, not stamped. A figure going into a paper should carry no
         # marks the caption cannot; the provenance still needs to exist, so it
@@ -80,6 +84,24 @@ def save(fig, name: str, provenance: str | None = None) -> Path:
     fig.savefig(out.with_suffix(".png"))
     plt.close(fig)
     return out
+
+
+def legend_above(fig, ax, ncol: int | None = None, y: float = 1.0) -> None:
+    """Put the legend above the panels, outside the data area.
+
+    A legend inside the axes collides with the data as soon as the data moves,
+    and several here did. Placing it at figure level above the panels removes
+    the failure mode rather than tuning around it.
+    """
+    handles, labels = ax.get_legend_handles_labels()
+    if not handles:
+        return
+    if ax.get_legend() is not None:
+        ax.get_legend().remove()
+    fig.legend(handles, labels, loc="upper center", bbox_to_anchor=(0.5, y),
+               ncol=ncol or len(handles), frameon=False, handletextpad=0.4,
+               columnspacing=1.2, borderaxespad=0.1)
+    fig.tight_layout(rect=(0, 0, 1, y - 0.10))
 
 
 def stamp(*parts: str) -> str:

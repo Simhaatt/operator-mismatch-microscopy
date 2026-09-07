@@ -72,7 +72,7 @@ def main() -> None:
     style.use()
     import matplotlib.pyplot as plt
 
-    fig, (axl, axr) = plt.subplots(1, 2, figsize=(6.6, 2.7),
+    fig, (axl, axr) = plt.subplots(1, 2, figsize=(6.6, 2.9),
                                    gridspec_kw={"width_ratios": [1.35, 1]})
 
     # ---- left: the SAME experiment on simulated and on real measurements --
@@ -95,18 +95,13 @@ def main() -> None:
     re_ = [real["per"].get(s, (np.nan, np.nan))[1] for s in STRUCTURES]
     axl.bar(x + w / 2, rm, w, yerr=re_, color=style.REAL,
             label="REAL measurements", error_kw={"lw": 0.8, "ecolor": "0.3"})
-    axl.axhline(0.9, color="0.35", lw=1.0, ls="--")
-    axl.text(len(STRUCTURES) - 0.55, 0.915, r"nominal $1-\alpha$", fontsize=6,
-             color="0.4", ha="right", va="bottom")
+    axl.axhline(0.9, color="0.35", lw=1.0, ls="--",
+                label=r"nominal $1-\alpha$")
     axl.set_xticks(x)
     axl.set_xticklabels(["CCPs", "ER", "F-act", "MT"])
     axl.set_ylabel("held-out coverage")
     axl.set_title("Held-out structure, in-domain calibration")
     axl.set_ylim(0, 1.09)
-    axl.legend(loc="upper center", ncol=1)
-    axl.annotate("CCPs reverses:\nworst to best", xy=(0.19, 1.0),
-                 xytext=(0.55, 0.30), fontsize=6.5, color="0.3",
-                 arrowprops=dict(arrowstyle="->", color="0.45", lw=0.8))
 
     # ---- right: real measurements, all four reconstructors ---------------
     labs, ind, indе, held, helde = [], [], [], [], []
@@ -130,9 +125,15 @@ def main() -> None:
     axr.set_title("In-domain calibration, four reconstructors")
     axr.set_ylim(0, 1.09)
     axr.set_xlim(-0.5, len(labs) - 0.5)
-    axr.legend(loc="lower left")
-    axr.text(len(labs) - 0.55, 0.915, r"nominal $1-\alpha$", fontsize=6,
-             color="0.4", ha="right", va="bottom")
+
+    # Both panels' series merged into one legend above the figure, so neither
+    # can collide with a bar or an error bar.
+    h = axl.get_legend_handles_labels()[0] + axr.get_legend_handles_labels()[0]
+    lab = axl.get_legend_handles_labels()[1] + axr.get_legend_handles_labels()[1]
+    fig.legend(h, lab, loc="upper center", bbox_to_anchor=(0.5, 1.0), ncol=5,
+               frameon=False, handletextpad=0.4, columnspacing=1.2,
+               borderaxespad=0.1)
+    fig.tight_layout(rect=(0, 0, 1, 0.89))
 
     out = style.save(fig, args.name, style.stamp(
         "10 partition seeds", "bg45_rotate_*.log", "real_grid_rotate_*.log"))
