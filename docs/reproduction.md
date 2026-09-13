@@ -229,6 +229,107 @@ python scripts/make_figures.py
 Rebuilds all five figures in seconds from the cached results. Each panel is
 stamped with the commit and the sources behind it.
 
+Figures 6 and 7 cover the second dataset and the task-level result and are built
+separately, because they depend on steps 9-12 below:
+
+```bash
+python scripts/figure_w2s_task.py
+```
+
+---
+
+## 9. Calibration that does not depend on the miscoverage level
+
+`scripts/gate4_calibration.py` refits its base predictor at every alpha, as a
+conditional quantile regressor. Below about alpha = 0.02 that fit degenerates --
+the spread of its prediction falls from 0.242 to 0.0037 between alpha 0.1 and
+0.001, so the predictor stops being conditional at all -- and the reported bound
+then *narrows* as the requested confidence rises, which no valid procedure may
+do. Audited over the twelve shift-axis by scheme combinations, the original
+violates monotonicity nine times.
+
+```bash
+python scripts/gate4_scaled.py --features experiments/features19/rl_photons_100_bg45.npz
+```
+
+Fits mean and scale once, scores on the scale-normalised residual, and lets the
+conformal quantile do all the alpha-dependent work. Expect **0 monotonicity
+violations** and in-distribution coverage tracking nominal across three orders
+of magnitude: 0.901, 0.948, 0.983, 0.993, 0.997, 0.998.
+
+## 10. Per-family, ablation, and the Phase 1 analyses
+
+No re-extraction: `mode` and `severity` are stored per row.
+
+```bash
+python scripts/family_analysis.py  --features experiments/features19/rl_photons_100_bg45.npz
+python scripts/ablation_matched.py --features experiments/features19/rl_photons_100_bg45.npz --seeds 5
+python scripts/phase1_analyses.py  --features experiments/features19/rl_photons_100_bg45.npz
+python scripts/runtime_table.py    --features experiments/features19/rl_photons_100_bg45.npz
+```
+
+Expect coverage spread across the four aberration families of about 0.657
+(spherical highest, coma lowest, in every cache), and the full feature set
+21-29% narrower than the residual alone at matched coverage.
+
+## 11. Relative l2, physical mismatch families, and task readouts
+
+Re-extraction with 29 specs instead of 17: the twelve extra are NA at +/-5%,
+emission wavelength at +/-10 and +/-20 nm, and axial defocus from 50 to 200 nm.
+NA and wavelength are **not** wavefront errors -- they rescale the pupil -- so
+`rms` is NaN for those eight and every spec carries `mismatch_mag`, the relative
+l2 difference between the true and nominal kernel, instead.
+
+```bash
+bash ieee/run_phase2.sh            # ~6 h CPU, four caches
+python scripts/phase2_analysis.py  --features experiments/features29/rl_photons_100.npz --seeds 5
+python scripts/task_analysis.py    --features experiments/features29_task/rl_photons_100.npz --seeds 5
+```
+
+`--task-metrics` adds three downstream readouts at no measurable cost, because
+the reference measurement depends only on the ground truth and is cached per
+cell. Only two are reported: `branch_points` is non-monotone in severity and is
+excluded.
+
+**Read the task numbers against the shift ratio, not on their own.** The
+held-out structure is not equally hard for every error definition, so a bound
+can look good purely because the shift ran in its favour. `task_analysis.py`
+prints the per-structure medians needed to check this.
+
+## 12. Second dataset (W2S)
+
+W2S ships 400 genuine widefield captures per field alongside a SIM
+reconstruction of the same field, so the real-measurement experiment can be run
+against a real acquisition rather than one summed from raw SIM frames.
+
+Download `W2S_raw.zip` (40.7 GiB, CC BY 4.0) from
+<https://datasets.epfl.ch/w2s/W2S_raw.zip> or doi `10.5281/zenodo.3895807`, and
+place it at the repository root. It is gitignored.
+
+```bash
+python scripts/ingest_w2s.py                    # 52 s; SIM only, 720 MiB of 73 GiB
+python scripts/haze_fraction_w2s.py             # ~15 min
+bash ieee/run_w2s.sh                            # ~2 h, RL at two photon levels
+python scripts/real_calibration_w2s.py --n-iter 75 \
+    --out experiments/features19/real_w2s_rl.npz    # ~2 h, 2160 measurements
+```
+
+**Measure the haze before simulating anything.** It is the parameter that most
+changes behaviour here -- at 0.048 the nominal residual correlates +0.647 with
+reconstruction error and at 0.310 it correlates -0.251 -- so carrying BioSR's
+value across instruments would be a real error. Expect a median of **0.606** on
+W2S against 0.33 on BioSR, from 233 of 360 views passing R^2 >= 0.5.
+
+Two things the ingest records so a later reader cannot be misled: `pixel_um` is
+**inferred** from the Nikon N-SIM configuration (16 um iXon3 pitch behind 100x
+and a 2.5x relay) because W2S does not document it, and `structure` is the
+**wavelength channel**, not a specimen class. Holding out a W2S channel is a
+weaker content shift than holding out a BioSR structure, and the results differ
+accordingly.
+
+Expect in-domain coverage of **0.891** against a nominal 0.900 on the real
+measurements, and the one-sided bound to hold in every evaluated cell.
+
 ---
 
 ## Environment traps
@@ -241,3 +342,12 @@ stamped with the commit and the sources behind it.
   must be written into `docs/` to be preserved.
 - **Background job logs get rotated.** Poll for the output `.npz` rather than
   the log.
+- **Heredocs eat backslashes and truncate.** `
+` becomes a real newline and a
+  long script is cut off around 150 lines. Write Python containing escapes, or
+  any LaTeX, to a file instead of piping it through a heredoc.
+- **Memory-mapped files stay locked on Windows.** Release a `np.load(...,
+  mmap_mode="r")` handle before reopening that path for writing, or the reopen
+  fails with EINVAL.
+- **A 400-frame uint16 stack is 800 MiB as float64.** Accumulate in chunks
+  rather than casting the whole slice.

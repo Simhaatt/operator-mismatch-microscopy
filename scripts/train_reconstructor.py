@@ -73,6 +73,10 @@ def make_pairs(entries, psf0, cfg, n_per_cell, patch, device, dtype, tag,
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--model", choices=("unet", "unrolled"), default="unet")
+    ap.add_argument("--bg-aware", action="store_true",
+                    help="include the background in the unrolled "
+                         "network's data-fidelity term, matching what "
+                         "RL and TV are given; unrolled only")
     ap.add_argument("--source", default="data/biosr_gt.npz")
     ap.add_argument("--patch", type=int, default=256)
     ap.add_argument("--per-cell", type=int, default=8)
@@ -122,6 +126,17 @@ def main() -> None:
                           background=args.background, haze_frac=args.haze_frac)
     print(f"  {len(ytr)} training patches, {len(yva)} validation")
 
+    # Background handed to the unrolled fidelity term. Zero unless
+    # --bg-aware, so existing checkpoints train identically.
+    bg_for_fidelity = 0.0
+    if args.bg_aware:
+        if args.model != "unrolled":
+            raise SystemExit("--bg-aware applies only to --model unrolled")
+        bg_for_fidelity = (
+            background_for(100.0, args.haze_frac)
+            if args.haze_frac is not None else float(args.background)
+        )
+        print(f"  background-aware fidelity: b = {bg_for_fidelity:.2f}")
     model = (UNet(base=32, depth=3) if args.model == "unet"
              else UnrolledNet(n_stages=5, width=32)).to(device)
     n_par = sum(p.numel() for p in model.parameters())
@@ -142,7 +157,10 @@ def main() -> None:
         if args.model == "unet":
             yn, sc = normalise_measurement(y_batch)
             return model(yn) * sc
-        return model(y_batch, psf0)
+        # The measurement is H x + b, so the fidelity residual needs b.
+        # Without it the learned prox has to absorb a constant offset,
+        # which is not the job it is meant to be doing.
+        return model(y_batch, psf0, background=bg_for_fidelity)
 
     def target(x_batch, y_batch):
         """Rescale the object to the measurement's scale, so the loss is well posed.

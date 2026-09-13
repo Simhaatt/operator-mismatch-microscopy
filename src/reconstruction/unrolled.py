@@ -70,14 +70,34 @@ class UnrolledNet(nn.Module):
         return self.denoiser if self.shared else self.denoisers[k]
 
     def forward(
-        self, y: torch.Tensor, psf: torch.Tensor, mode: str = "reflect"
+        self,
+        y: torch.Tensor,
+        psf: torch.Tensor,
+        mode: str = "reflect",
+        background: float = 0.0,
     ) -> torch.Tensor:
+        """Run the unrolled iterations.
+
+        ``background`` is the additive out-of-focus and dark level present in
+        the measurement, in the same units as ``y``. The forward model that
+        formed ``y`` is ``H x + b``, so the fidelity residual is
+        ``H x + b - y``. Omitting ``b`` does not merely bias the gradient: it
+        forces the learned prox to absorb a constant offset, which is a
+        different job from denoising and confounds any comparison of this
+        network's operator-consistency features against reconstructors that do
+        model the background. Richardson-Lucy and Poisson-TV are both given the
+        background explicitly, so leaving it out here made the comparison
+        unequal.
+
+        Defaults to ``0.0`` so previously trained checkpoints evaluate exactly
+        as they did before.
+        """
         squeeze = y.dim() == 2
         if squeeze:
             y = y[None]
         x = y.clone()
         for k in range(self.n_stages):
-            resid = apply_psf(x, psf, mode=mode) - y
+            resid = apply_psf(x, psf, mode=mode) + background - y
             grad = fft_convolve_adjoint(resid, psf, mode=mode)
             x = (x - torch.exp(self.log_step[k]) * grad).clamp_min(0.0)
             x = self._prox(k)(x[:, None])[:, 0]

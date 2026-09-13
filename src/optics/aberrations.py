@@ -13,7 +13,7 @@ own PSF synthesis in ``tests/test_optics.py``.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .zernike import NAMED_MODES
 
@@ -58,6 +58,11 @@ class AberrationSpec:
     severity: str
     rms_waves: float
     coeffs: dict[int, float]
+    # Overrides applied to the PupilConfig used for the *true* kernel. Empty for
+    # the Zernike ladder, where mismatch is phase added to a fixed pupil; used by
+    # src.optics.physical_mismatch, where mismatch is a wrong NA or wavelength
+    # and so changes the pupil itself. The nominal kernel never sees these.
+    cfg_overrides: dict[str, float] = field(default_factory=dict)
 
     @property
     def label(self) -> str:

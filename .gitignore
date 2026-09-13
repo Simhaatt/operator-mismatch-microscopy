@@ -25,3 +25,22 @@ microscopy_handoff.zip
 
 # Copyrighted third-party paper: cite it, do not redistribute it.
 s41592-020-01048-5.pdf
+
+# Second dataset: 41 GB, CC BY 4.0, downloadable from the source.
+# doi 10.5281/zenodo.3895807 -- see docs/reproduction.md.
+W2S_raw.zip
+
+# Supplementary archives are built by scripts/pack_supplementary.py from the
+# tree itself, so the tree is the source and the zip is an artifact.
+supplementary_anonymous.zip
+ieee/supplementary_ieee.zip
+
+# Submission working directory. The run_*.sh drivers are committed because
+# docs/reproduction.md refers to them; everything else here is either the
+# manuscript (not code, and publishing a pre-submission draft is a decision for
+# the author, not a side effect of a push), submission strategy, or logs.
+# RESULTS_TCI.md is excluded too: it carries page-charge arithmetic and
+# submission history alongside the numbers, and docs/reproduction.md already
+# states the expected value of every result.
+ieee/*
+!ieee/run_*.sh

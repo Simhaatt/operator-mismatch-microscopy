@@ -28,10 +28,18 @@ import torch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.data.biosr import index_biosr, index_npz, load_object, split_by_cell  # noqa: E402
-from src.metrics.image import scale_match, ssim  # noqa: E402
+from src.metrics.image import relative_l2, scale_match, ssim  # noqa: E402
+from src.metrics.task import (  # noqa: E402
+    TASK_NAMES,
+    task_measurements,
+)
 from src.optics.aberrations import ABERRATION_MODES, ladder_specs  # noqa: E402
 from src.optics.forward_model import (  # noqa: E402
     NoiseConfig, background_for, sample_seed, simulate_measurement,
+)
+from src.optics.physical_mismatch import (  # noqa: E402
+    apply_overrides,
+    physical_specs,
 )
 from src.optics.psf import PupilConfig, pupil_psf  # noqa: E402
 from src.reconstruction.rl import richardson_lucy  # noqa: E402
@@ -87,11 +95,38 @@ def main() -> None:
                          "THIS over --background: a fixed rate is correct at "
                          "one photon level only (45 is 31%% at 100 photons but "
                          "75%% at 15). Real BioSR is 0.19-0.68, median 0.31.")
+    ap.add_argument("--include-physical", action="store_true",
+                    help="add the NA, wavelength and focus-drift mismatch "
+                         "families (12 specs) to the 17 Zernike specs")
+    ap.add_argument("--limit-cells", type=int, default=None,
+                    help="use at most this many cells per split; for smoke "
+                         "testing a pipeline change before a full extraction")
+    ap.add_argument("--na", type=float, default=1.7,
+                    help="objective numerical aperture (BioSR default 1.7; "
+                         "W2S is 1.49)")
+    ap.add_argument("--wavelength-um", type=float, default=0.525,
+                    help="emission wavelength in um (BioSR default 0.525)")
+    ap.add_argument("--pixel-um", type=float, default=0.0313,
+                    help="object-grid pixel size in um (BioSR default 0.0313; "
+                         "W2S SIM grid is 0.032)")
+    ap.add_argument("--task-metrics", action="store_true",
+                    help="also score each reconstruction by the relative "
+                         "error in three downstream task readouts (puncta "
+                         "count, skeleton length, branch points)")
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
     dtype, device = torch.float32, torch.device(args.device)
-    cfg = PupilConfig(n_out=args.kernel)
+    # Optics default to the verified BioSR values; a second dataset on a
+    # different instrument must override them or every PSF in the run is wrong.
+    cfg = PupilConfig(
+        n_out=args.kernel,
+        na=args.na,
+        wavelength_um=args.wavelength_um,
+        pixel_um=args.pixel_um,
+    )
+    print(f"  optics: NA {cfg.na}, lambda {cfg.wavelength_um} um, "
+          f"pixel {cfg.pixel_um} um")
     psf0 = pupil_psf(None, cfg, warn=False)[0].to(device=device, dtype=dtype)
     probes = build_probes(cfg, device, dtype)
     background = (background_for(args.photons, args.haze_frac)
@@ -106,13 +141,34 @@ def main() -> None:
         ["defocus", "astigmatism", "coma", "spherical"],
         ["nominal", "mild", "moderate", "severe", "extreme"],
     )
+    if args.include_physical:
+        specs = specs + physical_specs(na=cfg.na, wavelength_um=cfg.wavelength_um)
+    # The true kernel may come from a perturbed configuration (wrong NA or
+    # wavelength); the nominal kernel psf0 above never is. That asymmetry is the
+    # operator mismatch.
     true_psfs = [
-        (s, pupil_psf(s.coeffs, cfg, warn=False)[0].to(device=device, dtype=dtype))
+        (
+            s,
+            pupil_psf(s.coeffs, apply_overrides(cfg, s), warn=False)[0]
+            .to(device=device, dtype=dtype),
+        )
         for s in specs
     ]
+    # Family-agnostic mismatch magnitude in PSF space. RMS wavefront error is
+    # undefined for the NA and wavelength families, so this is the only axis
+    # comparable across all of them.
+    psf0_norm = float(torch.linalg.vector_norm(psf0))
+    mismatch_mag = {
+        s.label: float(torch.linalg.vector_norm(p - psf0) / max(psf0_norm, 1e-20))
+        for s, p in true_psfs
+    }
 
     idx = index_npz(args.source) if args.source else index_biosr()
     sp = split_by_cell(idx, held_out_structure=args.held_out)
+    if args.limit_cells:
+        sp = {k: v[: args.limit_cells] for k, v in sp.items()}
+        print(f"  LIMITED to {args.limit_cells} cells per split -- smoke test, "
+              f"not a publishable cache")
     print(f"photons={args.photons} crop={args.crop} n_iter={args.n_iter} "
           f"probes={len(probes)} specs={len(specs)}")
 
@@ -168,6 +224,12 @@ def main() -> None:
                 f"on measures domain shift, not reliability. Re-train or match.")
         net = (UNet(base=32, depth=3) if args.reconstructor == "unet"
                else UnrolledNet(n_stages=5, width=32))
+        trained_bg_aware = bool(tr.get("bg_aware", False))
+        # A background-aware checkpoint minimises a different objective.
+        # Evaluating it with b = 0 would measure that mismatch, not
+        # reliability, so the value is taken from the checkpoint rather
+        # than from this script's flags.
+        bg_fidelity = background if trained_bg_aware else 0.0
         net.load_state_dict(ck["state_dict"])
         net = net.to(device=device, dtype=dtype).eval()
         print(f"  loaded {args.reconstructor} from {args.checkpoint} "
@@ -182,6 +244,7 @@ def main() -> None:
                 if args.reconstructor == "unet":
                     yn, sc = normalise_measurement(y)
                     return net(yn) * sc
+                return net(y, psf0, background=bg_fidelity)
                 return net(y, psf0)
     else:
         def reconstruct(y):
@@ -191,8 +254,12 @@ def main() -> None:
     store: dict[str, np.ndarray] = {}
     for split, entries in sp.items():
         X, e, sev, mode, cell, struct, rms = [], [], [], [], [], [], []
+        e_l2, mag = [], []
+        tasks = {k: [] for k in TASK_NAMES} if args.task_metrics else {}
         for i, entry in enumerate(entries):
             x = load_object(entry, crop=args.crop, dtype=dtype).to(device)[None]
+            # T(x) is identical for all specs of this cell; compute once.
+            ref_task = task_measurements(x[0]) if args.task_metrics else None
             for spec, psf_true in true_psfs:
                 y = simulate_measurement(
                     x[0], psf_true, noise, seed=sample_seed(split, entry.key, spec.label)
@@ -200,7 +267,23 @@ def main() -> None:
                 x_hat = reconstruct(y)
                 X.append(oscr_features(y, x_hat, psf0, probes,
                                        cutoff_cyc_px=cutoff)[0].cpu().numpy())
-                e.append(float(1.0 - ssim(scale_match(x_hat[0], x[0]), x[0], data_range=1.0)))
+                # One scale-matched estimate, two metrics: the only difference
+                # between e and e_l2 is the metric, not the reconstruction.
+                matched = scale_match(x_hat[0], x[0])
+                e.append(float(1.0 - ssim(matched, x[0], data_range=1.0)))
+                e_l2.append(float(relative_l2(matched, x[0])))
+                mag.append(mismatch_mag[spec.label])
+                if args.task_metrics:
+                    est_task = task_measurements(matched)
+                    for k in TASK_NAMES:
+                        denom = ref_task[k]
+                        # Undefined when the reference measurement is
+                        # zero; NaN so the analysis drops it explicitly
+                        # rather than averaging in a meaningless number.
+                        tasks[k].append(
+                            abs(est_task[k] - denom) / denom
+                            if denom > 0 else float('nan')
+                        )
                 sev.append(spec.severity)
                 mode.append(spec.mode)
                 cell.append(entry.key)
@@ -210,7 +293,11 @@ def main() -> None:
                 print(f"  {split}: {i+1}/{len(entries)} cells", flush=True)
         store[f"{split}_X"] = np.asarray(X, dtype=np.float32)
         store[f"{split}_e"] = np.asarray(e, dtype=np.float32)
+        store[f"{split}_e_l2"] = np.asarray(e_l2, dtype=np.float32)
         store[f"{split}_rms"] = np.asarray(rms, dtype=np.float32)
+        store[f"{split}_mismatch_mag"] = np.asarray(mag, dtype=np.float32)
+        for k, v in tasks.items():
+            store[f"{split}_task_{k}"] = np.asarray(v, dtype=np.float32)
         store[f"{split}_severity"] = np.asarray(sev)
         store[f"{split}_mode"] = np.asarray(mode)
         store[f"{split}_cell"] = np.asarray(cell)
@@ -223,6 +310,11 @@ def main() -> None:
     store["background"] = np.asarray([background])
     store["haze_frac"] = np.asarray([background / (args.photons + background)])
     store["reconstructor"] = np.asarray([args.reconstructor])
+    store["include_physical"] = np.asarray([bool(args.include_physical)])
+    store["task_metrics"] = np.asarray([bool(args.task_metrics)])
+    if args.reconstructor in ("unet", "unrolled"):
+        store["bg_aware"] = np.asarray([bool(trained_bg_aware)])
+    store["n_specs"] = np.asarray([len(specs)])
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(args.out, **store)
     print(f"wrote {args.out}")

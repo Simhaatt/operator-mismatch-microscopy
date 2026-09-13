@@ -17,6 +17,7 @@ import math
 import torch
 
 __all__ = [
+    "relative_l2",
     "gaussian_window",
     "ssim",
     "psnr",
@@ -142,3 +143,21 @@ def scale_match(estimate: torch.Tensor, reference: torch.Tensor) -> torch.Tensor
     num = (estimate * reference).sum(dim=dims, keepdim=True)
     den = (estimate * estimate).sum(dim=dims, keepdim=True).clamp_min(1e-20)
     return estimate * (num / den)
+
+def relative_l2(estimate, reference) -> "torch.Tensor":
+    """Relative l2 reconstruction error, ||estimate - reference|| / ||reference||.
+
+    Reported alongside ``1 - ssim`` so the coverage results can be shown not to
+    depend on a perceptual metric. SSIM is bounded, locally weighted and
+    sensitive to structural similarity; relative l2 is unbounded, global and
+    sensitive to intensity. A reviewer asking whether the calibration findings
+    are an SSIM artefact is asking whether they survive that swap.
+
+    ``estimate`` is expected to have been scale-matched already, for the same
+    reason SSIM requires it: deconvolution recovers the object only up to a
+    global intensity scale.
+    """
+    dims = tuple(range(estimate.dim()))[-2:]
+    num = torch.linalg.vector_norm(estimate - reference, dim=dims)
+    den = torch.linalg.vector_norm(reference, dim=dims).clamp_min(1e-20)
+    return num / den

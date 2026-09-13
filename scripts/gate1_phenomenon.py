@@ -37,6 +37,7 @@ import torch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.metrics.image import scale_match, ssim  # noqa: E402
+from src.metrics.stats import spearman as shared_spearman  # noqa: E402
 from src.optics.aberrations import ladder_specs  # noqa: E402
 from src.optics.forward_model import (  # noqa: E402
     NoiseConfig,
@@ -49,17 +50,17 @@ from src.reconstruction.rl import richardson_lucy  # noqa: E402
 
 
 def spearman(a: torch.Tensor, b: torch.Tensor) -> float:
-    """Spearman rank correlation between two 1-D tensors."""
+    """Spearman rank correlation between two 1-D tensors, tie-corrected.
 
-    def rank(t: torch.Tensor) -> torch.Tensor:
-        order = torch.argsort(t)
-        r = torch.empty_like(t)
-        r[order] = torch.arange(len(t), dtype=t.dtype, device=t.device)
-        return r
-
-    ra, rb = rank(a.flatten()), rank(b.flatten())
-    ra, rb = ra - ra.mean(), rb - rb.mean()
-    return float((ra * rb).sum() / (ra.norm() * rb.norm()).clamp_min(1e-20))
+    Delegates to the shared implementation. The local ``argsort(argsort(x))``
+    version this replaces was only a rank when every value was distinct; the
+    aberration ladder ``rms`` takes five distinct values across thousands of
+    samples, so every correlation against it was computed on tied data.
+    """
+    return shared_spearman(
+        a.detach().flatten().cpu().numpy(),
+        b.detach().flatten().cpu().numpy(),
+    )
 
 
 def load_objects(pattern: str, limit: int | None, dtype: torch.dtype) -> torch.Tensor:
