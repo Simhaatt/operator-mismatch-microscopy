@@ -1,4 +1,21 @@
-# Calibrated Reliability of Microscopy Reconstruction under Forward-Operator Shift
+# Reliability of Conformal Reconstruction-Error Bounds Under Forward-Operator Mismatch in Computational Microscopy
+
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22750126.svg)](https://doi.org/10.5281/zenodo.22750126)
+
+Reproducibility package for the manuscript of the same title. Release `v1.0.0` is
+archived on Zenodo; the badge is the concept DOI and always resolves to the
+current version.
+
+> Experiments span two microscopy datasets acquired on different instruments,
+> four reconstruction methods, two photon regimes, Zernike aberrations, and
+> physical perturbations of focus, numerical aperture and wavelength.
+> Severe-to-extreme Zernike mismatch increases reconstruction error by up to
+> fivefold even as the nominal data-consistency residual decreases, with nominal
+> 90% coverage falling as low as 0.31. The one-sided coverage inequality holds in
+> every evaluated setting-by-content cell across ten random splits on both
+> instruments. On genuine widefield measurements from the second instrument,
+> in-domain calibration attains 0.891 ± 0.017 mean coverage at a nominal level of
+> 0.900.
 
 A fluorescence-microscopy restoration model can return an image that looks
 convincing even when the microscope's true optical response differs from the one
@@ -9,10 +26,11 @@ optical and specimen shift.
 The contribution is not a better reconstructor. It is a post-hoc reliability
 layer, plus an honest account of when calibration breaks.
 
-## Headline results so far
+## Headline results
 
-All on real BioSR data (228 cells, four structures), Richardson-Lucy
-reconstruction, verified optics. No GPU used yet.
+The numbers below are the first BioSR stage (228 cells, four structures),
+Richardson-Lucy reconstruction, verified optics, CPU only. The manuscript extends
+this to a second instrument and four reconstruction methods.
 
 **1. Physics-derived features beat the obvious baseline, and are far more robust.**
 Predicting reconstruction error from a single `(y, x_hat)` observation, with
@@ -41,7 +59,10 @@ exactly as the literature applies it, and it is the gap the novelty audit
 identified as open: every conformal imaging paper assumes calibration and test
 are exchangeable.
 
-Whether shift-aware calibration repairs this is Gate 4, in progress.
+Whether shift-aware calibration repairs this is the question the manuscript
+answers: conformity-score shift is a reliable *post-hoc* diagnostic of coverage
+degradation, while the tested label-free observables alone are not sufficient to
+anticipate it dependably on real measurements.
 
 ## What was tried and did not survive
 
@@ -133,8 +154,8 @@ Gate 0  Novelty audit ........................... PASS (narrowed)
 Gate 1  Does mismatch cause plausible-but-wrong output? .. PASS
 Gate 2  Is the trivial residual already enough? ... FAILED above 100 photons
 Gate 3  Does the PSF-family profile beat it? ...... PASS (23-26% tighter)
-Gate 4  Does shift-aware calibration repair coverage? .... in progress
-        [first GPU work: generalise beyond Richardson-Lucy]
+Gate 4  Does shift-aware calibration repair coverage? .... COMPLETE
+        [generalised beyond Richardson-Lucy; second instrument added]
 ```
 
 The ordering is the point. Gates 1-3 cost CPU-hours; Gate 4 and the reconstructor
@@ -171,15 +192,19 @@ licensing and the verified acquisition parameters. Measurements are regenerated
 from deterministic per-image seeds rather than stored, because the full shift
 matrix would run to hundreds of GB against a 20 GB Kaggle working disk.
 
-## Open
+## Still open
 
-* **Gate 4** -- the actual contribution, unproven until it runs.
-* **One reconstructor.** Everything is Richardson-Lucy. Must generalise to TV, a
-  U-Net and an unrolled network. The U-Net matters most: it has no explicit
-  data-fidelity term, so its residual may behave differently.
-* **One held-out structure.** Needs rotating through all four.
-* **Pure simulation.** Real-optics validation via W2S (488/561/640 nm gives a real
-  PSF-shift axis) is a 40.7 GB download, deferred.
+* **Anticipating coverage loss before it happens.** Conformity-score shift
+  diagnoses degradation after the fact; the label-free observables tested here do
+  not reliably predict it in advance on real measurements.
 * **A limitation to report:** the profile degrades *more* than the plain residual
   under content shift (ood rho 0.49 vs 0.76), so richer features are more tied to
   training-structure content.
+
+## Citation
+
+Please cite the archived release; metadata is in `CITATION.cff`.
+
+> T. T., S. (2026). *Reliability of Conformal Reconstruction-Error Bounds Under
+> Forward-Operator Mismatch in Computational Microscopy* (v1.0.0). Zenodo.
+> https://doi.org/10.5281/zenodo.22750126
