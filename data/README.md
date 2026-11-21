@@ -102,9 +102,9 @@ already registered.
 curl -L -o data/W2S_raw.zip https://datasets.epfl.ch/w2s/W2S_raw.zip
 ```
 
-> **Blocking check:** the W2S license is not stated in the paper or the repo.
-> Resolve before redistributing (mirroring to Kaggle) -- reading it locally is
-> fine either way.
+The Zenodo record ([10.5281/zenodo.3895807](https://doi.org/10.5281/zenodo.3895807))
+releases W2S under **CC BY 4.0**. Only derived per-sample features are
+redistributed in this repository (`experiments/`), never images.
 
 ## FMD -- evaluated and rejected
 

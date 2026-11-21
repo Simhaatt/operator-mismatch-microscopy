@@ -1,0 +1,76 @@
+GATE 5 -- coverage bound  cov >= 1 - alpha - d_TV(score),  nominal 90%
+
+  config                 held out          cov   d_TV     d+  bound1s  slack1s  blind d+
+  real_rl                CCPs            1.000  0.935  0.000    0.900   +0.100     0.990
+  real_rl                ER              0.794  0.359  0.148    0.752   +0.041     0.704
+  real_rl                F-actin         0.573  0.378  0.378    0.522   +0.051     0.120
+  real_rl                Microtubules    0.907  0.218  0.010    0.890   +0.018     0.133
+
+  real_tv                CCPs            1.000  0.875  0.000    0.900   +0.100     0.990
+  real_tv                ER              0.640  0.431  0.278    0.622   +0.018     0.715
+  real_tv                F-actin         0.542  0.420  0.390    0.510   +0.032     0.174
+  real_tv                Microtubules    0.896  0.239  0.071    0.829   +0.067     0.133
+
+  real_unet              CCPs            0.350  0.639  0.620    0.280   +0.070     0.980
+  real_unet              ER              0.931  0.391  0.012    0.888   +0.044     0.666
+  real_unet              F-actin         0.560  0.459  0.397    0.503   +0.057     0.422
+  real_unet              Microtubules    0.989  0.402  0.061    0.839   +0.150     0.033
+
+  real_unrolled          CCPs            0.110  0.882  0.875    0.025   +0.085     0.990
+  real_unrolled          ER              0.841  0.648  0.101    0.799   +0.042     0.636
+  real_unrolled          F-actin         0.409  0.619  0.589    0.311   +0.098     0.387
+  real_unrolled          Microtubules    0.993  0.480  0.168    0.732   +0.260     0.107
+
+  cells: 16
+  symmetric bound holds 16/16, mean slack +0.344
+  one-sided bound holds 16/16, mean slack +0.077
+
+  Which quantity explains the spread in coverage?
+    rho(coverage, -d_TV)      = +0.047   symmetric
+    rho(coverage, -d+)        = +0.923   one-sided
+
+  Can it be anticipated WITHOUT labels?
+    rho(coverage, -blind d_TV) = +0.100
+    rho(coverage, -blind d+)   = +0.114
+    rho(d+, blind d+)          = +0.016
+
+  Which BLOCK of features makes the best blind estimator?
+  The labelled bound is tight; the blind proxy is what limits the
+  contribution, so this is the number that matters.
+
+    block      n_feat  cells   rho(cov,-blind d+)   rho(cov,-blind dTV)   rho(d+,blind d+)
+    all            19     16               +0.114                +0.100             +0.016
+    otf             5     16               +0.175                -0.096             +0.087
+    oscr           14     16               +0.225                +0.143             +0.186
+    otf_core        3     16               -0.143                -0.181             -0.219
+    residual        1     16               -0.153                -0.531             -0.191
+    qpred           0     16               +0.259                +0.208             +0.389
+    blind_score      0     16               -0.218                +0.182             -0.293
+
+    best blind block: 'qpred' at rho +0.259  (vs +0.114 for the full feature set)
+
+  The first says the bound is the right explanation; the second and third
+  say whether a practitioner could see the danger coming at deployment,
+  with no ground truth, which is the only version that is actually usable.
+
+  ACROSS 10 PARTITION SEEDS  (mean +- sd)
+  Every number above is one split. These are the same quantities
+  recomputed on independent cell-blocked partitions, which is the
+  only way to tell a finding from a lucky draw.
+
+    rho_cov_dplus          +0.933 +- 0.053   (n=10)
+    rho_cov_tv             +0.117 +- 0.089   (n=10)
+    holds_1s               16.0 +- 0.0 of 16
+    mean_slack_1s          +0.088 +- 0.010
+
+    blind_qpred            +0.222 +- 0.153
+    blind_oscr             +0.197 +- 0.055
+    blind_otf              +0.182 +- 0.041
+    blind_all              +0.166 +- 0.044
+    blind_otf_core         -0.123 +- 0.067
+    blind_residual         -0.162 +- 0.084
+    blind_blind_score      -0.310 +- 0.092
+
+    best 'qpred' leads 'oscr' by +0.025, pooled sd 0.163 -- NOT separated from seed noise
+
+  wrote paper/results/gate5_real_grid.json

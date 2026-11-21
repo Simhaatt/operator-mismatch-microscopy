@@ -1,10 +1,13 @@
 # Reliability of Conformal Reconstruction-Error Bounds Under Forward-Operator Mismatch in Computational Microscopy
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22750126.svg)](https://doi.org/10.5281/zenodo.22750126)
+[![reproduce](https://github.com/Simhaatt/operator-mismatch-microscopy/actions/workflows/reproduce.yml/badge.svg)](https://github.com/Simhaatt/operator-mismatch-microscopy/actions/workflows/reproduce.yml)
 
-Reproducibility package for the manuscript of the same title. Release `v1.0.0` is
-archived on Zenodo; the badge is the concept DOI and always resolves to the
-current version.
+This is the reproducibility package for the manuscript of the same title. It
+contains the code, the derived data, and a single command that regenerates
+**every figure, every table and every quantitative claim** in the paper and its
+supplementary material, then checks each printed number against the
+regenerated one.
 
 > Experiments span two microscopy datasets acquired on different instruments,
 > four reconstruction methods, two photon regimes, Zernike aberrations, and
@@ -17,194 +20,155 @@ current version.
 > in-domain calibration attains 0.891 ± 0.017 mean coverage at a nominal level of
 > 0.900.
 
-A fluorescence-microscopy restoration model can return an image that looks
-convincing even when the microscope's true optical response differs from the one
-the model assumed. This project asks whether we can bound how wrong that
-reconstruction is, **without clean ground truth**, with calibration that survives
-optical and specimen shift.
+---
 
-The contribution is not a better reconstructor. It is a post-hoc reliability
-layer, plus an honest account of when calibration breaks.
+## Quick start: the whole paper in one command
 
-## Headline results
+Needs Python ≥ 3.10 and about 1 GB of disk. No raw microscopy data, no GPU.
 
-The numbers below are the first BioSR stage (228 cells, four structures),
-Richardson-Lucy reconstruction, verified optics, CPU only. The manuscript extends
-this to a second instrument and four reconstruction methods.
+```powershell
+git clone https://github.com/Simhaatt/operator-mismatch-microscopy.git
+cd operator-mismatch-microscopy
+python -m pip install -r requirements-lock.txt --extra-index-url https://download.pytorch.org/whl/cpu
+python reproduce.py --jobs 4
+```
 
-**1. Physics-derived features beat the obvious baseline, and are far more robust.**
-Predicting reconstruction error from a single `(y, x_hat)` observation, with
-identical model class and conformal calibration:
+This takes about 20 minutes on a 6-core laptop (`--jobs` = number of physical
+cores you can spare). It writes:
 
-| photons | predictor | test rho | bound width | worst-group coverage |
+| Output | Contents |
+|---|---|
+| `paper/figures/fig*.pdf` | The six figures, under the file names the manuscript uses |
+| `paper/tables/*.tex`, `paper/tables/tables.md` | Table II and the nine results tables of the supplement |
+| `paper/results/claims_report.md` | Every quantitative claim: value printed in the paper, regenerated value, status |
+| `paper/results/*.json`, `logs/` | Raw output of each analysis step |
+
+and ends with a line like
+
+```text
+  249 of 251 claims reproduce exactly; 2 approximate claims within tolerance; 0 differ; 0 missing results
+```
+
+Reference copies of all of these outputs are committed, so you can also just
+read [paper/results/claims_report.md](paper/results/claims_report.md) and
+[paper/tables/tables.md](paper/tables/tables.md) on GitHub. The same pipeline
+runs in CI on every push.
+
+`python reproduce.py --tests` runs the 275-test physics, analysis and data-integrity suite
+first.
+
+## Where each result comes from
+
+Every paper number is produced by one analysis step in
+[paper/run_analyses.py](paper/run_analyses.py) (`--list` prints them all),
+reading one or more of the shipped feature caches.
+
+| Paper element | Analysis step(s) | Script | Shipped cache(s) |
+|---|---|---|---|
+| Fig. 1; Sec. IV-A; supp. family table | `family_rl100`, `scaled_rl100` | `family_analysis.py`, `gate4_scaled.py` | `features19/rl_photons_100_bg45` |
+| Sec. IV-B paired coverage drop | `phase1_*` | `phase1_analyses.py` | `features19/*_bg45`, `*_bgprop` |
+| Fig. 2a/2b; Sec. IV-C; Table II bound rows | `gate5_biosr` | `gate5_bound.py` | the four `features19` simulated caches |
+| Fig. 3; Table II coverage rows; supp. metric, cross-setting and physical tables | `phase2_*` | `phase2_analysis.py` | `features29/*`, `features29_w2s/*` |
+| Sec. IV-D W2S bound | `gate5_w2s` | `gate5_bound.py` | `features29_w2s/*` |
+| Fig. 4a; supp. width ablation | `ablation_*` | `ablation_matched.py` | the four `features19` simulated caches |
+| Fig. 4b; supp. monitoring table; real-grid bound | `gate5_real_grid` | `gate5_bound.py` | `features19/real_{rl,tv,unet,unrolled}` |
+| Real-data coverage (Sec. IV-B, IV-D; Table II; supp. real table) | `real_coverage` | `real_coverage.py` | `features19/real_*` |
+| Supp. calibration audit and scale floors | `scaled_*` | `gate4_scaled.py` | the four `features19` simulated caches |
+
+Figures are drawn by [paper/make_figures.py](paper/make_figures.py), tables by
+[paper/make_tables.py](paper/make_tables.py), and the claim-by-claim comparison
+by [paper/check_claims.py](paper/check_claims.py).
+
+## Three levels of reproduction
+
+| Level | Starts from | Needs | Time | How |
 |---|---|---|---|---|
-| 15 | plain residual | +0.267 | 0.6405 | 0.486 |
-| 15 | **PSF-family profile** | **+0.971** | **0.4749** | **0.800** |
-| 100 | plain residual | +0.748 | 0.5125 | 0.600 |
-| 100 | **PSF-family profile** | **+0.961** | **0.3924** | **0.807** |
+| **A. Analyses** | shipped feature caches (14 MB, in this repo) | CPU | ~20 min | `python reproduce.py --jobs 5` |
+| **B. Feature caches** | raw BioSR (12 GB) and W2S (41 GB) | CPU, 8 GB RAM | ~17 CPU-hours | [docs/reproduction.md](docs/reproduction.md) |
+| **C. Learned reconstructors** | `data/biosr_gt.npz` | one GPU | ~45 min on an A100 | [docs/reproduction.md §7](docs/reproduction.md#7-the-two-learned-reconstructors-gpu) |
 
-Bounds are **23-26% tighter at equal coverage**. The sharper point is stability:
-the plain residual's usefulness collapses as photons drop (rho 0.748 -> 0.267)
-while the profile is flat (0.961 -> 0.971). Fifteen photons is where live-cell
-imaging actually operates, so the naive baseline fails exactly where it matters.
+Level A is what a reviewer needs. The analysis layer is deterministic, so with
+the locked environment every number matches the paper exactly. Level B reruns
+the forward model, reconstructions and feature extraction; each cache's exact
+build command is listed in [experiments/README.md](experiments/README.md), and
+`paper/check_claims.py` then tells you which printed numbers your rebuilt
+caches move. The trained U-Net and unrolled-network weights are shipped in
+`experiments/gpu/`, so level B does not depend on level C.
 
-This also settles the strongest objection to the method: `r_k` is computable from
-`(y, x_hat)` alone, so the profile could have been redundant with what a learner
-extracts directly. It is not.
+## Data
 
-**2. Conformal calibration collapses under shift.** On a held-out biological
-structure, coverage falls to **0.27-0.41 against a nominal 0.90**, worst-group
-coverage near zero, for both predictors. This is standard methodology applied
-exactly as the literature applies it, and it is the gap the novelty audit
-identified as open: every conformal imaging paper assumes calibration and test
-are exchangeable.
+Neither raw dataset is redistributed here. Both are CC BY 4.0.
 
-Whether shift-aware calibration repairs this is the question the manuscript
-answers: conformity-score shift is a reliable *post-hoc* diagnostic of coverage
-degradation, while the tested label-free observables alone are not sufficient to
-anticipate it dependably on real measurements.
+* **BioSR**: Qiao *et al.*, *Nature Methods* 18, 194–202 (2021);
+  data DOI [10.6084/m9.figshare.13264793](https://doi.org/10.6084/m9.figshare.13264793).
+* **W2S**: Zhou *et al.*, ECCV Workshops 2020;
+  data DOI [10.5281/zenodo.3895807](https://doi.org/10.5281/zenodo.3895807).
 
-## What was tried and did not survive
+The committed caches in `experiments/` hold per-sample features, reconstruction
+errors and cell IDs derived from these datasets, never images. Fetch commands,
+archive layouts and the verified acquisition parameters are in
+[data/README.md](data/README.md). Cache contents, provenance and checksums are
+in [experiments/README.md](experiments/README.md).
 
-Recorded because the retractions are as informative as the results.
+## Two things that are easy to misread
 
-* **"The measurement residual is blind to operator mismatch."** Withdrawn. Holding
-  a specimen fixed and varying the operator, the residual tracks error at
-  rho 0.89-0.92 above 100 photons. The blindness is real but **photon-dependent**,
-  holding only in the photon-starved regime (rho -0.39 at 15 photons).
-* **"The residual is doubly blind -- floored by shot noise and driven onto that
-  floor by the reconstructor's own objective."** The mechanism is real (RL drives
-  its residual to 0.994x the shot-noise floor) but does not imply blindness, and
-  the claim was too strong.
-* **"The Gate 2 failure is a kernel-truncation artifact."** Wrong. Truncation was
-  a genuine artifact and is now guarded against, but the failure survived fixing it.
-* **"The correlation is an artifact of pooling across severity cells."** Wrong.
-  Within-cell rho is +0.77.
+* **"Seeds".** In `gate5_bound.py` each seed draws a new cell-blocked
+  train/calibration/test partition. In `phase1_analyses.py`,
+  `phase2_analysis.py`, `ablation_matched.py` and `real_coverage.py` the
+  partition is the one stored in the cache, and each seed redraws the random
+  half of the training split used to fit the conditional mean and scale models
+  and the gradient-boosting random state.
+* **Cache names.** `*_bg45` (45 background photons at 100 photons) and
+  `*_bgprop` (6.75 at 15 photons) are both an out-of-focus fraction of 0.31, the
+  value measured on BioSR. `*_photons_15_bg45` (a 0.75 fraction) is not a paper
+  setting and is not shipped.
+
+## Repository layout
+
+```text
+reproduce.py           one command: analyses -> figures -> tables -> claim check
+paper/                 run_analyses, make_figures, make_tables, check_claims,
+                       and their committed reference outputs
+src/optics/            Zernike pupils (OSA/ANSI, RMS-normalised), PSFs with sampling
+                       guards, Poisson-Gaussian forward model with exact adjoint,
+                       aberration ladder, physical (NA/wavelength/focus) mismatch
+src/reconstruction/    Richardson-Lucy, Poisson-TV (FISTA), residual U-Net, unrolled net
+src/reliability/       the 19 deployment-observable features
+src/data/, src/metrics/  MRC reader, BioSR loader, SSIM/l2/task metrics, statistics
+scripts/               feature extraction, calibration and bound analyses, data ingest
+experiments/           shipped feature caches, trained weights, measured haze (+ README)
+tests/                 275 tests pinning the physics, the analyses and the shipped data
+docs/                  reproduction guide and research notes; see docs/README.md
+notebooks/             Colab "Run all" notebook for the GPU step
+ieee/run_*.sh          drivers that built the 29-spec and W2S caches
+```
 
 ## Verified physics
 
-134 tests. Each pins a property that would otherwise invalidate downstream claims.
+The test suite pins every property that would otherwise invalidate downstream
+claims, including:
 
 | Property | Result |
 |---|---|
 | PSF vs analytic Airy pattern | cosine similarity 1.000000, L1 error 0.4% |
-| FWHM scaling | 0.5145 lambda/NA within 0.8-3.3%, lambda 488-640 nm, NA 0.9-1.4 |
-| Strehl at the Marechal limit | 0.8148 at lambda/14, matching exp(-(2 pi sigma)^2) to 0.3% |
-| Blur adjoint `<Hx,z> = <x,H^T z>` | exact to 3.7e-16, all four padding modes |
-| Poisson-Gaussian variance | 53.991 vs theoretical `rate + read^2` = 54.000 |
+| FWHM scaling | 0.5145 λ/NA within 0.8–3.3%, λ 488–640 nm, NA 0.9–1.4 |
+| Strehl at the Maréchal limit | 0.8148 at λ/14, matching exp(-(2πσ)²) to 0.3% |
+| Blur adjoint ⟨Hx,z⟩ = ⟨x,Hᵀz⟩ | exact to 3.7e-16, all four padding modes |
+| Poisson-Gaussian variance | 53.991 vs theoretical rate + read² = 54.000 |
 | Seed reproducibility | stable across `PYTHONHASHSEED` and chunk size |
 
-Four real bugs caught, all silent in a rendered image:
-
-1. **Even oversampling shifted every PSF by half a pixel.** A 2x2 binning box
-   cannot be centred on the peak sample, so PSFs lost their symmetry (cosine
-   similarity to Airy 0.83, not 1.0). Odd oversampling is now required.
-2. **The blur adjoint was wrong under reflect padding.** `H = Crop . Conv . Pad`,
-   so `H^T = Pad^T . Conv^T . Crop^T`, and `Pad^T` is a scatter-add fold, not
-   another pad. The shortcut broke the adjoint identity by 1.5e-3 -- enough to
-   move Richardson-Lucy's fixed point.
-3. **A factor-of-two pixel size.** The widely quoted 62.6 nm BioSR pixel is the
-   *widefield* pixel; SIM ground truth is 2x upsampled, so objects are at 31.3 nm.
-4. **Severity-correlated PSF truncation.** Aberrated PSFs have heavier tails, so a
-   short kernel discards more of them; after renormalisation the aberrated
-   operator became artificially compact, manufacturing a residual/severity
-   correlation. At 31.3 nm a 63-px kernel loses 13 points of energy at extreme
-   aberration; 191 px keeps the spread under 0.6.
-
-## The operator is derived from the data, then confirmed against the paper
-
-BioSR's ground truth is itself a SIM reconstruction, hence already band-limited.
-If the simulated cutoff sat above the object's band limit there would be no
-genuine structure for a deconvolver to invent, and the whole study would be
-circular. Measured (`scripts/inspect_objects.py`):
-
-* Object band edge **0.379 cycles/pixel**, 76% of pixel Nyquist.
-* At the verified optics (NA 1.7, 31.3 nm, 525 nm) the widefield OTF cutoff is
-  **0.2027 cyc/px**, leaving **9.05%** of object energy in the operator's null
-  space, with a measured SIM gain of 1.87x against the theoretical 2x.
-
-Acquisition parameters are verified, not assumed: NA 1.7 (Olympus
-APON100XHOTIRF) and 405/488/560 nm from the Methods of Qiao et al., Nature
-Methods 18, 194-202 (2021); pixel sizes read directly from the MRC headers.
-
-Note the operator is **incoherent**: its transfer function is the OTF, the pupil
-autocorrelation, so support is `2 NA / lambda`, not the amplitude cutoff
-`NA / lambda`. Confusing the two overstates the null-space band by exactly 2x.
-
-## Positioning
-
-Three parts of the obvious framing are already taken, and the paper must not
-claim them:
-
-| Piece | Owner |
-|---|---|
-| Null-space theory of hallucination | Bhadra et al., IEEE TMI 40(11) 2021 |
-| Re-blur-and-compare in microscopy | SQUIRREL, Nature Methods 2018 |
-| Kernel-weighted shift-adaptive calibration | Guan's LCP -- and the deterministic form is provably broken; use Hore & Barber's RLCP |
-| PSF error propagation | Astronomy, since Paulin-Henriksson 2008 |
-
-What survives: **every existing calibrated-UQ method for imaging assumes the
-forward operator is known and fixed.** See [docs/gate0_novelty.md](docs/gate0_novelty.md)
-for the full audit, including a named competitive risk.
-
-## Workflow
-
-```text
-Gate 0  Novelty audit ........................... PASS (narrowed)
-Gate 1  Does mismatch cause plausible-but-wrong output? .. PASS
-Gate 2  Is the trivial residual already enough? ... FAILED above 100 photons
-Gate 3  Does the PSF-family profile beat it? ...... PASS (23-26% tighter)
-Gate 4  Does shift-aware calibration repair coverage? .... COMPLETE
-        [generalised beyond Richardson-Lucy; second instrument added]
-```
-
-The ordering is the point. Gates 1-3 cost CPU-hours; Gate 4 and the reconstructor
-sweep cost ~95 T4-hours. Establishing the phenomenon first is what prevents
-spending those hours on a dead hypothesis -- and Gate 2 did kill the original one.
-
-## Layout
-
-```text
-src/optics/         zernike (OSA/ANSI, RMS-normalised), psf (sampling guards),
-                    forward_model (Poisson-Gaussian, exact adjoint),
-                    aberrations (Marechal-anchored severity ladder)
-src/reconstruction/ rl (Richardson-Lucy with the true H^T 1 normaliser)
-src/reliability/    features (physics-consistency profile, spectra)
-src/data/           mrc (dependency-free reader), biosr (cell-blocked splits)
-src/metrics/        image (SSIM, PSNR, radial spectrum, scale match)
-scripts/            inspect_objects, gate1_phenomenon, gate3_deployment,
-                    extract_features, gate4_calibration, summarize_gate1
-tests/              134 tests pinning the physics and the analysis
-```
-
-## Reproducing
-
-```bash
-pip install -e ".[dev]"
-python -m pytest -q
-python scripts/inspect_objects.py
-python scripts/extract_features.py --photons 100 --n-iter 75 --out experiments/features/photons_100.npz
-python scripts/gate4_calibration.py --features experiments/features/photons_100.npz
-```
-
-Data is not committed; see [data/README.md](data/README.md) for fetch commands,
-licensing and the verified acquisition parameters. Measurements are regenerated
-from deterministic per-image seeds rather than stored, because the full shift
-matrix would run to hundreds of GB against a 20 GB Kaggle working disk.
-
-## Still open
-
-* **Anticipating coverage loss before it happens.** Conformity-score shift
-  diagnoses degradation after the fact; the label-free observables tested here do
-  not reliably predict it in advance on real measurements.
-* **A limitation to report:** the profile degrades *more* than the plain residual
-  under content shift (ood rho 0.49 vs 0.76), so richer features are more tied to
-  training-structure content.
+`pyproject.toml` promotes `UserWarning` to an error on purpose: that is what
+makes the PSF Nyquist guard testable.
 
 ## Citation
 
-Please cite the archived release; metadata is in `CITATION.cff`.
+Please cite the archived release (metadata in [CITATION.cff](CITATION.cff)) and
+the two datasets above.
 
 > T. T., S. (2026). *Reliability of Conformal Reconstruction-Error Bounds Under
-> Forward-Operator Mismatch in Computational Microscopy* (v1.0.0). Zenodo.
-> https://doi.org/10.5281/zenodo.22750126
+> Forward-Operator Mismatch in Computational Microscopy: Code and
+> Reproducibility Artifacts*. Zenodo. https://doi.org/10.5281/zenodo.22750126
+
+## License
+
+[CC BY 4.0](LICENSE).

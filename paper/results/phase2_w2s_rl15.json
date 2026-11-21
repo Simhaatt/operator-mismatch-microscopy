@@ -1,0 +1,254 @@
+{
+ "meta": {
+  "photons": 15.0,
+  "n_specs": 29,
+  "reconstructor": "rl"
+ },
+ "alpha": 0.1,
+ "seeds": 5,
+ "coverage_ssim": {
+  "none (in-distribution)": {
+   "coverage": [
+    0.8673850574712644,
+    0.007798429163857426
+   ],
+   "width": [
+    0.40331378801286577,
+    0.0019750233814631846
+   ],
+   "n": 1392
+  },
+  "operator shift (Zernike)": {
+   "coverage": [
+    0.5927083333333332,
+    0.03736230507179367
+   ],
+   "width": [
+    0.5528114372312245,
+    0.0058866039702039595
+   ],
+   "n": 384
+  },
+  "operator shift (physical)": {
+   "coverage": [
+    0.896875,
+    0.00889322810754562
+   ],
+   "width": [
+    0.321585307117799,
+    0.0014198223789699707
+   ],
+   "n": 576
+  },
+  "content shift": {
+   "coverage": [
+    0.774367816091954,
+    0.0035399686423987346
+   ],
+   "width": [
+    0.4792896298403745,
+    0.002899924365254999
+   ],
+   "n": 3480
+  },
+  "combined": {
+   "coverage": [
+    0.6308333333333334,
+    0.02801754162821728
+   ],
+   "width": [
+    0.6051173539354024,
+    0.008423684330803894
+   ],
+   "n": 960
+  }
+ },
+ "coverage_l2": {
+  "none (in-distribution)": {
+   "coverage": [
+    0.9232758620689655,
+    0.0032574092094122507
+   ],
+   "width": [
+    0.34840743927027684,
+    0.0036335273001387794
+   ],
+   "n": 1392
+  },
+  "operator shift (Zernike)": {
+   "coverage": [
+    0.7942708333333333,
+    0.021788021524324883
+   ],
+   "width": [
+    0.4784376420772678,
+    0.009358200269655465
+   ],
+   "n": 384
+  },
+  "operator shift (physical)": {
+   "coverage": [
+    0.9663194444444445,
+    0.011121956512532638
+   ],
+   "width": [
+    0.2844812144879987,
+    0.004095077348040239
+   ],
+   "n": 576
+  },
+  "content shift": {
+   "coverage": [
+    0.9740804597701149,
+    0.0038355341870031268
+   ],
+   "width": [
+    0.4059489955333316,
+    0.0071443510805660965
+   ],
+   "n": 3480
+  },
+  "combined": {
+   "coverage": [
+    0.9360416666666665,
+    0.006059599821770428
+   ],
+   "width": [
+    0.5349044074405459,
+    0.009487572601074672
+   ],
+   "n": 960
+  }
+ },
+ "rho_ssim_l2": 0.7182045926031727,
+ "families_ssim": [
+  {
+   "family": "defocus",
+   "kind": "zernike",
+   "worst_rung": "extreme",
+   "n": 48,
+   "coverage": 0.4791666666666667,
+   "mean_error": 0.6349455714225769,
+   "mean_mismatch_mag": 0.9773574471473694
+  },
+  {
+   "family": "astigmatism",
+   "kind": "zernike",
+   "worst_rung": "extreme",
+   "n": 48,
+   "coverage": 0.4375,
+   "mean_error": 0.5927988886833191,
+   "mean_mismatch_mag": 0.8916373252868652
+  },
+  {
+   "family": "coma",
+   "kind": "zernike",
+   "worst_rung": "extreme",
+   "n": 48,
+   "coverage": 0.5,
+   "mean_error": 0.6322384476661682,
+   "mean_mismatch_mag": 0.9679215550422668
+  },
+  {
+   "family": "spherical",
+   "kind": "zernike",
+   "worst_rung": "extreme",
+   "n": 48,
+   "coverage": 0.8333333333333334,
+   "mean_error": 0.6137552857398987,
+   "mean_mismatch_mag": 0.9242374300956726
+  },
+  {
+   "family": "na",
+   "kind": "physical",
+   "worst_rung": "p2",
+   "n": 48,
+   "coverage": 0.9583333333333334,
+   "mean_error": 0.25042077898979187,
+   "mean_mismatch_mag": 0.0767783597111702
+  },
+  {
+   "family": "wavelength",
+   "kind": "physical",
+   "worst_rung": "p2",
+   "n": 48,
+   "coverage": 0.9166666666666666,
+   "mean_error": 0.2690123915672302,
+   "mean_mismatch_mag": 0.04782412573695183
+  },
+  {
+   "family": "focus_drift",
+   "kind": "physical",
+   "worst_rung": "p4",
+   "n": 48,
+   "coverage": 0.8125,
+   "mean_error": 0.36534953117370605,
+   "mean_mismatch_mag": 0.3938291370868683
+  }
+ ],
+ "families_l2": [
+  {
+   "family": "defocus",
+   "kind": "zernike",
+   "worst_rung": "extreme",
+   "n": 48,
+   "coverage": 0.6458333333333334,
+   "mean_error": 0.4676036834716797,
+   "mean_mismatch_mag": 0.9773574471473694
+  },
+  {
+   "family": "astigmatism",
+   "kind": "zernike",
+   "worst_rung": "extreme",
+   "n": 48,
+   "coverage": 0.6458333333333334,
+   "mean_error": 0.4184240400791168,
+   "mean_mismatch_mag": 0.8916373252868652
+  },
+  {
+   "family": "coma",
+   "kind": "zernike",
+   "worst_rung": "extreme",
+   "n": 48,
+   "coverage": 0.6458333333333334,
+   "mean_error": 0.47635841369628906,
+   "mean_mismatch_mag": 0.9679215550422668
+  },
+  {
+   "family": "spherical",
+   "kind": "zernike",
+   "worst_rung": "extreme",
+   "n": 48,
+   "coverage": 0.8541666666666666,
+   "mean_error": 0.48125791549682617,
+   "mean_mismatch_mag": 0.9242374300956726
+  },
+  {
+   "family": "na",
+   "kind": "physical",
+   "worst_rung": "p2",
+   "n": 48,
+   "coverage": 1.0,
+   "mean_error": 0.17938362061977386,
+   "mean_mismatch_mag": 0.0767783597111702
+  },
+  {
+   "family": "wavelength",
+   "kind": "physical",
+   "worst_rung": "p2",
+   "n": 48,
+   "coverage": 1.0,
+   "mean_error": 0.18668122589588165,
+   "mean_mismatch_mag": 0.04782412573695183
+  },
+  {
+   "family": "focus_drift",
+   "kind": "physical",
+   "worst_rung": "p4",
+   "n": 48,
+   "coverage": 0.875,
+   "mean_error": 0.2539709508419037,
+   "mean_mismatch_mag": 0.3938291370868683
+  }
+ ]
+}

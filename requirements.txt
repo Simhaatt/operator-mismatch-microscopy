@@ -1,6 +1,10 @@
-# Pinned to the minor versions the reported results were produced with.
+# Compatible ranges. For the exact versions every published number was
+# produced and checked with, install requirements-lock.txt instead.
 numpy>=2.0,<3
-torch>=2.0,<3
+scipy>=1.10,<2
 scikit-learn>=1.4,<2
+scikit-image>=0.21
 matplotlib>=3.9,<4
+tifffile>=2023.1.1
+torch>=2.0,<3
 pytest>=8.0

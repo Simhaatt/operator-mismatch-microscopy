@@ -1,0 +1,37 @@
+{
+  "code_commit": "commit e88a311",
+  "haze_fraction": 0.31,
+  "per_cell": 32,
+  "epochs": 60,
+  "gpu": "NVIDIA A100-SXM4-40GB",
+  "files": {
+    "unet_haze31.pt": {
+      "bytes": 7797145,
+      "sha256": "64adc5b78213d768",
+      "val_ssim": 0.9245383143424988,
+      "model": "unet"
+    },
+    "unrolled_haze31.pt": {
+      "bytes": 81089,
+      "sha256": "c02307eaa3e709bb",
+      "val_ssim": 0.8888109922409058,
+      "model": "unrolled"
+    },
+    "unet_photons_100_haze31.npz": {
+      "bytes": 293613,
+      "sha256": "c60e696a0d9972b9"
+    },
+    "unet_photons_15_haze31.npz": {
+      "bytes": 291243,
+      "sha256": "a7e2a7e2a7c26172"
+    },
+    "unrolled_photons_100_haze31.npz": {
+      "bytes": 292247,
+      "sha256": "3cb439d7962c72d7"
+    },
+    "unrolled_photons_15_haze31.npz": {
+      "bytes": 290795,
+      "sha256": "b4e7fbbb560ff5dd"
+    }
+  }
+}

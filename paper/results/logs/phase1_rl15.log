@@ -1,0 +1,33 @@
+PHASE 1 ANALYSES -- photons=15, alpha=0.1
+
+1. Calibration-set size (nominal 90%, 40 random draws each)
+   the conformal order statistic requires n >= 9 at this alpha
+
+    n_cal  coverage      sd  5th pct   worst   feasible
+       10     0.899   0.088    0.670   0.657   yes
+       20     0.901   0.059    0.808   0.713   yes
+       40     0.891   0.041    0.798   0.792   yes
+       80     0.890   0.025    0.850   0.797   yes
+      160     0.895   0.014    0.879   0.877   yes
+      320     0.892   0.006    0.886   0.881   yes
+      595     0.891   0.000    0.891   0.891   yes
+
+2. Per-structure coverage
+
+   structure         in-dist  operator   n_in   n_op
+   ER                  0.855     0.667    255    120
+   F-actin             0.925     0.784    187     88
+   Microtubules        0.908     0.722    153     72
+
+3. Seed stability over 10 seeds
+
+   in-distribution coverage : 0.887 +/- 0.012
+   operator-shift coverage  : 0.738 +/- 0.022
+   paired drop (within seed): 0.149 +/- 0.021   (min 0.113)
+
+   The paired drop is the quantity with power: seed-to-seed variation
+   is common to both arms and cancels. A drop whose spread is small
+   relative to its mean is a real effect, not a lucky split.
+
+  elapsed 57.9s
+  wrote paper/results/phase1_rl15.json

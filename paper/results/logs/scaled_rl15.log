@@ -1,0 +1,111 @@
+  mismatch score vs true RMS wavefront error, test: rho = +0.839
+  mismatch score vs true RMS wavefront error, ood: rho = +0.558
+
+  base mean prediction std (alpha-independent) : 0.2051
+  base scale prediction std (alpha-independent): 0.0110
+  scale floor                                  : 0.0023
+
+GATE 4S -- alpha-independent normalised conformal, photons=15
+
+  shift axis             scheme      alpha  nominal  coverage  worst-grp    bound   n
+  none (in-distribution) split       0.100    0.900     0.891      0.736   0.4716   595
+  none (in-distribution) split       0.050    0.950     0.951      0.843   0.5023   595
+  none (in-distribution) split       0.020    0.980     0.973      0.907   0.5379   595
+  none (in-distribution) split       0.010    0.990     0.992      0.971   0.5782   595
+  none (in-distribution) split       0.005    0.995     0.998      0.993   0.6227   595
+  none (in-distribution) split       0.001    0.999     1.000      1.000   0.7326   595
+
+  none (in-distribution) mondrian    0.100    0.900     0.892      0.771   0.4739   595
+  none (in-distribution) mondrian    0.050    0.950     0.934      0.871   0.4988   595
+  none (in-distribution) mondrian    0.020    0.980     0.982      0.950   0.5512   595
+  none (in-distribution) mondrian    0.010    0.990     0.993      0.986   0.6239   595
+  none (in-distribution) mondrian    0.005    0.995     0.993      0.986   0.6239   595
+  none (in-distribution) mondrian    0.001    0.999     0.993      0.986   0.6239   595
+
+  none (in-distribution) rlcp        0.100    0.900     0.897      0.771   0.4719   595
+  none (in-distribution) rlcp        0.050    0.950     0.938      0.864   0.4994   595
+  none (in-distribution) rlcp        0.020    0.980     0.982      0.950   0.5469   595
+  none (in-distribution) rlcp        0.010    0.990     0.992      0.986   0.5841   595
+  none (in-distribution) rlcp        0.005    0.995     0.993      0.986   0.6227   595
+  none (in-distribution) rlcp        0.001    0.999     1.000      1.000      inf   595
+
+  operator shift         split       0.100    0.900     0.718      0.593   0.6038   280
+  operator shift         split       0.050    0.950     0.829      0.729   0.6354   280
+  operator shift         split       0.020    0.980     0.932      0.871   0.6942   280
+  operator shift         split       0.010    0.990     0.939      0.886   0.7088   280
+  operator shift         split       0.005    0.995     0.986      0.971   0.7684   280
+  operator shift         split       0.001    0.999     0.986      0.971   0.7684   280
+
+  operator shift         mondrian    0.100    0.900     0.579      0.479   0.5729   280
+  operator shift         mondrian    0.050    0.950     0.714      0.586   0.6021   280
+  operator shift         mondrian    0.020    0.980     0.971      0.971   0.7665   280
+  operator shift         mondrian    0.010    0.990     0.971      0.971   0.7665   280
+  operator shift         mondrian    0.005    0.995     0.971      0.971   0.7665   280
+  operator shift         mondrian    0.001    0.999     0.971      0.971   0.7665   280
+
+  operator shift         rlcp        0.100    0.900     0.343      0.221   0.5201   280
+  operator shift         rlcp        0.050    0.950     0.432      0.229   0.5278   280
+  operator shift         rlcp        0.020    0.980     0.486      0.243   0.5381   280
+  operator shift         rlcp        0.010    0.990     0.514      0.250   0.5500   280
+  operator shift         rlcp        0.005    0.995     0.543      0.264   0.5629   280
+  operator shift         rlcp        0.001    0.999     1.000      1.000      inf   280
+
+  content shift          split       0.100    0.900     0.255      0.009   0.1274   918
+  content shift          split       0.050    0.950     0.296      0.019   0.1431   918
+  content shift          split       0.020    0.980     0.350      0.032   0.1613   918
+  content shift          split       0.010    0.990     0.434      0.037   0.1819   918
+  content shift          split       0.005    0.995     0.513      0.051   0.2046   918
+  content shift          split       0.001    0.999     0.644      0.093   0.2608   918
+
+  content shift          mondrian    0.100    0.900     0.249      0.005   0.1275   918
+  content shift          mondrian    0.050    0.950     0.282      0.019   0.1370   918
+  content shift          mondrian    0.020    0.980     0.340      0.019   0.1590   918
+  content shift          mondrian    0.010    0.990     0.391      0.032   0.1797   918
+  content shift          mondrian    0.005    0.995     0.391      0.032   0.1797   918
+  content shift          mondrian    0.001    0.999     0.391      0.032   0.1797   918
+
+  content shift          rlcp        0.100    0.900     0.243      0.005   0.1246   918
+  content shift          rlcp        0.050    0.950     0.278      0.019   0.1369   918
+  content shift          rlcp        0.020    0.980     0.336      0.023   0.1580   918
+  content shift          rlcp        0.010    0.990     0.370      0.032   0.1703   918
+  content shift          rlcp        0.005    0.995     0.411      0.032   0.1816   918
+  content shift          rlcp        0.001    0.999     1.000      1.000      inf   918
+
+  combined               split       0.100    0.900     0.005      0.000   0.1748   432
+  combined               split       0.050    0.950     0.014      0.009   0.1927   432
+  combined               split       0.020    0.980     0.037      0.019   0.2260   432
+  combined               split       0.010    0.990     0.053      0.028   0.2342   432
+  combined               split       0.005    0.995     0.127      0.037   0.2680   432
+  combined               split       0.001    0.999     0.127      0.037   0.2680   432
+
+  combined               mondrian    0.100    0.900     0.009      0.000   0.1697   432
+  combined               mondrian    0.050    0.950     0.012      0.005   0.1849   432
+  combined               mondrian    0.020    0.980     0.118      0.028   0.2506   432
+  combined               mondrian    0.010    0.990     0.118      0.028   0.2506   432
+  combined               mondrian    0.005    0.995     0.118      0.028   0.2506   432
+  combined               mondrian    0.001    0.999     0.118      0.028   0.2506   432
+
+  combined               rlcp        0.100    0.900     0.009      0.000   0.1565   432
+  combined               rlcp        0.050    0.950     0.009      0.000   0.1652   432
+  combined               rlcp        0.020    0.980     0.019      0.009   0.1853   432
+  combined               rlcp        0.010    0.990     0.032      0.028   0.1924   432
+  combined               rlcp        0.005    0.995     0.039      0.032   0.2004   432
+  combined               rlcp        0.001    0.999     1.000      1.000      inf   432
+
+  MONOTONICITY CHECK (bound must not shrink as alpha falls):
+    none (in-distribution) split      ok
+    none (in-distribution) mondrian   ok
+    none (in-distribution) rlcp       ok
+    operator shift         split      ok
+    operator shift         mondrian   ok
+    operator shift         rlcp       ok
+    content shift          split      ok
+    content shift          mondrian   ok
+    content shift          rlcp       ok
+    combined               split      ok
+    combined               mondrian   ok
+    combined               rlcp       ok
+
+  total monotonicity violations: 0
+
+  wrote paper/results/scaled_rl15.json

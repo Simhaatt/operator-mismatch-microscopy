@@ -1,0 +1,38 @@
+PHASE 2 -- rl, photons=15, 29 specs, alpha=0.1, 5 seeds
+
+1. Does the conclusion depend on the error metric?
+
+   shift axis                    coverage (1-SSIM)    coverage (rel l2)   n
+   none (in-distribution)           0.867+/-0.008        0.923+/-0.003    1392
+   operator shift (Zernike)         0.593+/-0.037        0.794+/-0.022    384
+   operator shift (physical)        0.897+/-0.009        0.966+/-0.011    576
+   content shift                    0.774+/-0.004        0.974+/-0.004    3480
+   combined                         0.631+/-0.028        0.936+/-0.006    960
+
+   largest coverage difference between metrics: 0.305
+   The two metrics are different functions of the reconstruction, so
+   exact agreement is not expected. What matters is whether the
+   ordering and the qualitative failure survive the swap.
+
+   Spearman rho(1-SSIM, rel l2) on the test split: +0.718
+
+2. Do the physically-motivated families behave like the Zernike ladder?
+
+   family        kind      rung       |mismatch|    error  cov(SSIM)  cov(l2)   n
+   defocus       zernike   extreme        0.9774   0.6349      0.479    0.646   48
+   astigmatism   zernike   extreme        0.8916   0.5928      0.438    0.646   48
+   coma          zernike   extreme        0.9679   0.6322      0.500    0.646   48
+   spherical     zernike   extreme        0.9242   0.6138      0.833    0.854   48
+   na            physical  p2             0.0768   0.2504      0.958    1.000   48
+   wavelength    physical  p2             0.0478   0.2690      0.917    1.000   48
+   focus_drift   physical  p4             0.3938   0.3653      0.812    0.875   48
+
+   Zernike  families: coverage 0.438-0.833, |mismatch| 0.8916-0.9774
+   physical families: coverage 0.812-0.958, |mismatch| 0.0478-0.3938
+
+   Read these together with the magnitude column. A physical family
+   that retains coverage while producing a much smaller kernel
+   perturbation has not disproved the mechanism -- it has placed
+   realistic parameter uncertainty lower on the same axis.
+
+  wrote paper/results/phase2_w2s_rl15.json

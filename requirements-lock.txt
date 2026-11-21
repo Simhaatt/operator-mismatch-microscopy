@@ -1,0 +1,17 @@
+# Exact environment the published numbers were regenerated and checked with
+# (python paper/check_claims.py: all claims match). Python 3.14.3, Windows 11
+# and Ubuntu (CI). The analysis layer depends on scikit-learn's gradient
+# boosting; other scikit-learn versions can move values in the last digit.
+#
+#   python -m pip install -r requirements-lock.txt --extra-index-url https://download.pytorch.org/whl/cpu
+numpy==2.4.2
+scipy==1.17.1
+scikit-learn==1.8.0
+joblib==1.5.3
+threadpoolctl==3.6.0
+scikit-image==0.26.0
+matplotlib==3.10.9
+pillow==12.2.0
+tifffile==2026.6.1
+torch==2.14.0
+pytest==9.1.1
