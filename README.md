@@ -50,8 +50,7 @@ and ends with a line like
 
 Reference copies of all of these outputs are committed, so you can also just
 read [paper/results/claims_report.md](paper/results/claims_report.md) and
-[paper/tables/tables.md](paper/tables/tables.md) on GitHub. The same pipeline
-runs in CI on every push.
+[paper/tables/tables.md](paper/tables/tables.md) on GitHub.
 
 `python reproduce.py --tests` runs the 275-test physics, analysis and data-integrity suite
 first.

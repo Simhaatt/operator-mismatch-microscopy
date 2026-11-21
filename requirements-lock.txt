@@ -1,6 +1,6 @@
 # Exact environment the published numbers were regenerated and checked with
-# (python paper/check_claims.py: all claims match). Python 3.14.3, Windows 11
-# and Ubuntu (CI). The analysis layer depends on scikit-learn's gradient
+# (python paper/check_claims.py: all claims match). Python 3.14.3 on
+# Windows 11. The analysis layer depends on scikit-learn's gradient
 # boosting; other scikit-learn versions can move values in the last digit.
 #
 #   python -m pip install -r requirements-lock.txt --extra-index-url https://download.pytorch.org/whl/cpu
