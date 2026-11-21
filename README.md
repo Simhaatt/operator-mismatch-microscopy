@@ -1,7 +1,6 @@
 # Reliability of Conformal Reconstruction-Error Bounds Under Forward-Operator Mismatch in Computational Microscopy
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22750126.svg)](https://doi.org/10.5281/zenodo.22750126)
-[![reproduce](https://github.com/Simhaatt/operator-mismatch-microscopy/actions/workflows/reproduce.yml/badge.svg)](https://github.com/Simhaatt/operator-mismatch-microscopy/actions/workflows/reproduce.yml)
 
 This is the reproducibility package for the manuscript of the same title. It
 contains the code, the derived data, and a single command that regenerates
