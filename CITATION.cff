@@ -1,0 +1,76 @@
+cff-version: 1.2.0
+message: >-
+  If you use this code or the shipped feature caches, please cite the archived
+  release below, and the BioSR and W2S datasets it is built on.
+type: software
+title: >-
+  Reliability of Conformal Reconstruction-Error Bounds Under Forward-Operator
+  Mismatch in Computational Microscopy: Code and Reproducibility Artifacts
+authors:
+  - family-names: T. T.
+    given-names: Simhaa
+version: 1.1.0
+doi: 10.5281/zenodo.22750126
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.22750126
+    description: Concept DOI, always resolves to the latest archived release
+  - type: doi
+    value: 10.5281/zenodo.22750127
+    description: Version DOI of release v1.0.0, cited in the manuscript
+repository-code: https://github.com/Simhaatt/operator-mismatch-microscopy
+license: CC-BY-4.0
+keywords:
+  - conformal prediction
+  - computational microscopy
+  - forward-operator mismatch
+  - uncertainty quantification
+  - deconvolution
+  - reproducibility
+references:
+  - type: article
+    title: >-
+      Evaluation and development of deep neural networks for image
+      super-resolution in optical microscopy
+    authors:
+      - family-names: Qiao
+        given-names: Chang
+      - name: et al.
+    journal: Nature Methods
+    volume: 18
+    start: 194
+    end: 202
+    year: 2021
+    doi: 10.1038/s41592-020-01048-5
+  - type: dataset
+    title: "BioSR: a biological image dataset for super-resolution microscopy"
+    authors:
+      - family-names: Qiao
+        given-names: Chang
+      - family-names: Li
+        given-names: Di
+    doi: 10.6084/m9.figshare.13264793
+    license: CC-BY-4.0
+  - type: conference-paper
+    title: >-
+      W2S: Microscopy Data with Joint Denoising and Super-Resolution for
+      Widefield to SIM Mapping
+    authors:
+      - family-names: Zhou
+        given-names: Ruofan
+      - family-names: El Helou
+        given-names: Majed
+      - family-names: Sage
+        given-names: Daniel
+      - family-names: Laroche
+        given-names: Thierry
+      - family-names: Seitz
+        given-names: Arne
+      - family-names: Süsstrunk
+        given-names: Sabine
+    collection-title: ECCV 2020 Workshops
+    year: 2020
+  - type: dataset
+    title: W2S raw data
+    doi: 10.5281/zenodo.3895807
+    license: CC-BY-4.0

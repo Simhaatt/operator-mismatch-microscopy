@@ -4,19 +4,27 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "microscopy-reliability"
-version = "0.1.0"
-description = "Calibrated reliability of microscopy reconstruction under forward-operator shift"
+version = "1.1.0"
+description = "Reproducibility package: conformal reconstruction-error bounds under forward-operator mismatch in computational microscopy"
+readme = "README.md"
 requires-python = ">=3.10"
+authors = [{ name = "Simhaa T. T." }]
 dependencies = [
   "torch>=2.0",
-  "numpy>=1.24",
+  "numpy>=2.0",
   "scipy>=1.10",
+  "scikit-learn>=1.4",
   "scikit-image>=0.21",
+  "matplotlib>=3.9",
   "tifffile>=2023.1.1",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7"]
+dev = ["pytest>=8"]
+
+[project.urls]
+Repository = "https://github.com/Simhaatt/operator-mismatch-microscopy"
+Archive = "https://doi.org/10.5281/zenodo.22750126"
 
 [tool.setuptools.packages.find]
 include = ["src*"]

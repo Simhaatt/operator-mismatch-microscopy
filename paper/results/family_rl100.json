@@ -1,0 +1,269 @@
+{
+ "photons": 100.0,
+ "alpha": 0.1,
+ "nominal_error": 0.13452142477035522,
+ "nominal_residual": 0.17132829129695892,
+ "phenomenon": [
+  {
+   "family": "defocus",
+   "severity": "mild",
+   "n": 174,
+   "error": 0.14023835957050323,
+   "residual": 0.17050127685070038,
+   "error_ratio": 1.0424983501434326,
+   "residual_ratio": 0.995172917842865
+  },
+  {
+   "family": "defocus",
+   "severity": "moderate",
+   "n": 174,
+   "error": 0.1709980070590973,
+   "residual": 0.16809286177158356,
+   "error_ratio": 1.271158218383789,
+   "residual_ratio": 0.9811156392097473
+  },
+  {
+   "family": "defocus",
+   "severity": "severe",
+   "n": 174,
+   "error": 0.3728179931640625,
+   "residual": 0.1598820984363556,
+   "error_ratio": 2.771439552307129,
+   "residual_ratio": 0.9331914782524109
+  },
+  {
+   "family": "defocus",
+   "severity": "extreme",
+   "n": 174,
+   "error": 0.6720095872879028,
+   "residual": 0.14724411070346832,
+   "error_ratio": 4.995558261871338,
+   "residual_ratio": 0.859426736831665
+  },
+  {
+   "family": "astigmatism",
+   "severity": "mild",
+   "n": 174,
+   "error": 0.14033497869968414,
+   "residual": 0.1707899123430252,
+   "error_ratio": 1.043216586112976,
+   "residual_ratio": 0.9968576431274414
+  },
+  {
+   "family": "astigmatism",
+   "severity": "moderate",
+   "n": 174,
+   "error": 0.16737724840641022,
+   "residual": 0.16922777891159058,
+   "error_ratio": 1.2442423105239868,
+   "residual_ratio": 0.9877398610115051
+  },
+  {
+   "family": "astigmatism",
+   "severity": "severe",
+   "n": 174,
+   "error": 0.33481791615486145,
+   "residual": 0.16381950676441193,
+   "error_ratio": 2.4889559745788574,
+   "residual_ratio": 0.9561731219291687
+  },
+  {
+   "family": "astigmatism",
+   "severity": "extreme",
+   "n": 174,
+   "error": 0.6023508906364441,
+   "residual": 0.15424898266792297,
+   "error_ratio": 4.477732181549072,
+   "residual_ratio": 0.9003123641014099
+  },
+  {
+   "family": "coma",
+   "severity": "mild",
+   "n": 174,
+   "error": 0.14497070014476776,
+   "residual": 0.17027918994426727,
+   "error_ratio": 1.0776773691177368,
+   "residual_ratio": 0.9938766360282898
+  },
+  {
+   "family": "coma",
+   "severity": "moderate",
+   "n": 174,
+   "error": 0.18317128717899323,
+   "residual": 0.16716408729553223,
+   "error_ratio": 1.3616514205932617,
+   "residual_ratio": 0.9756945967674255
+  },
+  {
+   "family": "coma",
+   "severity": "severe",
+   "n": 174,
+   "error": 0.38224363327026367,
+   "residual": 0.15715007483959198,
+   "error_ratio": 2.8415074348449707,
+   "residual_ratio": 0.9172453284263611
+  },
+  {
+   "family": "coma",
+   "severity": "extreme",
+   "n": 174,
+   "error": 0.6582937240600586,
+   "residual": 0.14423027634620667,
+   "error_ratio": 4.893597602844238,
+   "residual_ratio": 0.8418357372283936
+  },
+  {
+   "family": "spherical",
+   "severity": "mild",
+   "n": 174,
+   "error": 0.14210505783557892,
+   "residual": 0.16998319327831268,
+   "error_ratio": 1.0563749074935913,
+   "residual_ratio": 0.9921489953994751
+  },
+  {
+   "family": "spherical",
+   "severity": "moderate",
+   "n": 174,
+   "error": 0.18057937920093536,
+   "residual": 0.16586732864379883,
+   "error_ratio": 1.3423837423324585,
+   "residual_ratio": 0.9681257605552673
+  },
+  {
+   "family": "spherical",
+   "severity": "severe",
+   "n": 174,
+   "error": 0.389511376619339,
+   "residual": 0.15158185362815857,
+   "error_ratio": 2.895534038543701,
+   "residual_ratio": 0.8847450017929077
+  },
+  {
+   "family": "spherical",
+   "severity": "extreme",
+   "n": 174,
+   "error": 0.6508179306983948,
+   "residual": 0.13410475850105286,
+   "error_ratio": 4.838024139404297,
+   "residual_ratio": 0.7827356457710266
+  }
+ ],
+ "coverage_reference": {
+  "family": "(calibrated rungs)",
+  "severity": "nominal+mild+moderate",
+  "n": 315,
+  "coverage": 0.9015873015873016,
+  "mean_bound": 0.20799226738896992,
+  "mean_error": 0.15085238218307495
+ },
+ "coverage_by_family": [
+  {
+   "family": "defocus",
+   "severity": "severe",
+   "n": 35,
+   "coverage": 0.8285714285714286,
+   "mean_bound": 0.4380101934750531,
+   "mean_error": 0.35874003171920776
+  },
+  {
+   "family": "defocus",
+   "severity": "extreme",
+   "n": 35,
+   "coverage": 0.4857142857142857,
+   "mean_bound": 0.64448587915984,
+   "mean_error": 0.64342200756073
+  },
+  {
+   "family": "astigmatism",
+   "severity": "severe",
+   "n": 35,
+   "coverage": 0.6857142857142857,
+   "mean_bound": 0.35842419482989535,
+   "mean_error": 0.3211738169193268
+  },
+  {
+   "family": "astigmatism",
+   "severity": "extreme",
+   "n": 35,
+   "coverage": 0.42857142857142855,
+   "mean_bound": 0.572768145409836,
+   "mean_error": 0.577910840511322
+  },
+  {
+   "family": "coma",
+   "severity": "severe",
+   "n": 35,
+   "coverage": 0.7714285714285715,
+   "mean_bound": 0.4255444966656144,
+   "mean_error": 0.36439910531044006
+  },
+  {
+   "family": "coma",
+   "severity": "extreme",
+   "n": 35,
+   "coverage": 0.3142857142857143,
+   "mean_bound": 0.5976832551792636,
+   "mean_error": 0.629228949546814
+  },
+  {
+   "family": "spherical",
+   "severity": "severe",
+   "n": 35,
+   "coverage": 0.9714285714285714,
+   "mean_bound": 0.5117879060745466,
+   "mean_error": 0.3740919530391693
+  },
+  {
+   "family": "spherical",
+   "severity": "extreme",
+   "n": 35,
+   "coverage": 0.8285714285714286,
+   "mean_bound": 0.6960950718831768,
+   "mean_error": 0.6241028308868408
+  },
+  {
+   "family": "ALL",
+   "severity": "severe",
+   "n": 140,
+   "coverage": 0.8142857142857143,
+   "mean_bound": 0.4334416977612773,
+   "mean_error": 0.3546012341976166
+  },
+  {
+   "family": "ALL",
+   "severity": "extreme",
+   "n": 140,
+   "coverage": 0.5142857142857142,
+   "mean_bound": 0.6277580879080292,
+   "mean_error": 0.6186660528182983
+  }
+ ],
+ "blind_by_family": [
+  {
+   "family": "defocus",
+   "n": 175,
+   "rho_score_vs_rms": 0.8329600870134667
+  },
+  {
+   "family": "astigmatism",
+   "n": 175,
+   "rho_score_vs_rms": 0.7767308819846144
+  },
+  {
+   "family": "coma",
+   "n": 175,
+   "rho_score_vs_rms": 0.7883286554258429
+  },
+  {
+   "family": "spherical",
+   "n": 175,
+   "rho_score_vs_rms": 0.8543959717186336
+  },
+  {
+   "family": "ALL (pooled)",
+   "n": 595,
+   "rho_score_vs_rms": 0.8352312488611077
+  }
+ ]
+}

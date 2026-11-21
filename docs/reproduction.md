@@ -1,8 +1,18 @@
-# Reproducing the results
+# Reproducing the results from raw data
 
-Every number in the paper comes from this pipeline. Steps 1-6 are CPU only;
-step 7 needs one GPU session and is only required for the two learned
-reconstructors.
+**Most readers do not need this page.** Every figure, table and number in the
+paper can be regenerated in about 20 minutes from the feature caches shipped in
+`experiments/`, with `python reproduce.py` (see the top-level README). This
+page is for rebuilding those caches from the raw BioSR and W2S data (level B)
+and for retraining the two learned reconstructors (level C). The exact build
+command for every shipped cache is also listed in
+[experiments/README.md](../experiments/README.md); after rebuilding, run
+`python reproduce.py --force` and `paper/check_claims.py` reports which printed
+numbers your caches move.
+
+Steps 1-6 are CPU only; step 7 needs one GPU session and is only required for
+the two learned reconstructors, whose trained weights are shipped in
+`experiments/gpu/`.
 
 Timings are measured on the development machine: 6-core AMD Ryzen 5 5600H,
 7.35 GB RAM, Windows 11, Python 3.14, PyTorch CPU. The GPU session was one
@@ -17,11 +27,14 @@ buys no throughput.
 ## 0. Environment
 
 ```bash
-python -m pip install numpy torch scikit-learn matplotlib pytest
+python -m pip install -r requirements-lock.txt --extra-index-url https://download.pytorch.org/whl/cpu
 ```
 
-Versions used: numpy 2.x, torch 2.x (CPU build is sufficient for steps 1-6),
-scikit-learn 1.x, matplotlib 3.10.
+`requirements-lock.txt` pins the exact versions the published numbers were
+checked with (Python 3.14, numpy 2.4, scikit-learn 1.8, torch 2.14 CPU build).
+`requirements.txt` gives compatible ranges. The analysis layer depends on
+scikit-learn's gradient boosting, so other scikit-learn versions can move
+values in the last printed digit.
 
 ## 1. Get the data
 
@@ -59,7 +72,8 @@ drops 68 of 228 cells. And the widely quoted "62.6 nm BioSR pixel" is the
 python -m pytest -q
 ```
 
-Expect **183 passed**. The suite pins Airy agreement, FWHM scaling against
+Expect **275 passed**: the physics and analysis tests, plus checksum, layout
+and cell-blocking checks on the shipped caches. The suite pins Airy agreement, FWHM scaling against
 lambda/NA, Marechal Strehl, the exact blur adjoint, Poisson-Gaussian variance,
 seed reproducibility, the haze-fraction parameterisation, and regressions for
 eleven specific bugs. If it fails, stop and diagnose; every later number depends
@@ -71,29 +85,35 @@ deliberate -- it is what makes the PSF Nyquist guard testable.
 ## 3. Extract the simulated feature caches
 
 Four configurations: two reconstructors at two photon levels, all at the
-measured out-of-focus fraction.
+measured out-of-focus fraction of 0.31. These are the exact commands that built
+the shipped caches; the output names are the ones every later step reads.
 
 ```bash
-python scripts/extract_features.py --photons 100 --n-iter 75 --crop 256 --source data/biosr_gt.npz --haze-frac 0.31 --out experiments/features19/rl_100.npz
+python scripts/extract_features.py --photons 100 --n-iter 75 --crop 256 --source data/biosr_gt.npz --background 45 --out experiments/features19/rl_photons_100_bg45.npz
 ```
 
 ```bash
-python scripts/extract_features.py --photons 15 --n-iter 30 --crop 256 --source data/biosr_gt.npz --haze-frac 0.31 --out experiments/features19/rl_15.npz
+python scripts/extract_features.py --photons 15 --n-iter 30 --crop 256 --source data/biosr_gt.npz --background 6.75 --out experiments/features19/rl_photons_15_bgprop.npz
 ```
 
 ```bash
-python scripts/extract_features.py --photons 100 --reconstructor tv --tv-iter 100 --tv-prox-iter 10 --crop 256 --source data/biosr_gt.npz --haze-frac 0.31 --out experiments/features19/tv_100.npz
+python scripts/extract_features.py --photons 100 --reconstructor tv --tv-iter 100 --tv-prox-iter 10 --crop 256 --source data/biosr_gt.npz --background 45 --out experiments/features19/tv_photons_100_bg45.npz
 ```
 
 ```bash
-python scripts/extract_features.py --photons 15 --reconstructor tv --tv-iter 100 --tv-prox-iter 10 --crop 256 --source data/biosr_gt.npz --haze-frac 0.31 --out experiments/features19/tv_15.npz
+python scripts/extract_features.py --photons 15 --reconstructor tv --tv-iter 100 --tv-prox-iter 10 --crop 256 --source data/biosr_gt.npz --background 6.75 --out experiments/features19/tv_photons_15_bgprop.npz
 ```
+
+45 background photons at 100 signal photons and 6.75 at 15 are both an
+out-of-focus fraction of 45/145 = 6.75/21.75 = 0.3103. `--haze-frac 0.31`
+gives a background of 44.93 and 6.74 instead: the same setting to two digits,
+but not bit-identical to the shipped caches.
 
 Roughly 30 min, 16 min, 90 min, 90 min. Richardson-Lucy scales with `--n-iter`;
 TV does not, because `--tv-iter` is fixed.
 
-**Pass `--haze-frac`, never a fixed `--background`.** A fixed rate is correct at
-one photon level only: 45 photons of background is 31% of the measurement at
+**Choose the background per photon level, never one fixed `--background` for
+all of them.** A fixed rate is correct at one photon level only: 45 photons of background is 31% of the measurement at
 100 photons but 75% at 15 and 7% at 600. Getting this wrong reversed a headline
 correlation and read as a photon-dependence finding until the arithmetic was
 checked.
@@ -107,7 +127,7 @@ held out entirely as the content-shift axis.
 All of these read cached features and run in seconds to minutes.
 
 ```bash
-python scripts/gate5_bound.py --features experiments/features19/rl_100.npz experiments/features19/rl_15.npz experiments/features19/tv_100.npz experiments/features19/tv_15.npz --seeds 10 --out experiments/gate5/bound.json
+python scripts/gate5_bound.py --features experiments/features19/rl_photons_100_bg45.npz experiments/features19/rl_photons_15_bgprop.npz experiments/features19/tv_photons_100_bg45.npz experiments/features19/tv_photons_15_bgprop.npz --seeds 10 --out experiments/gate5/bound.json
 ```
 
 Produces the coverage bound and the seven-way blind-estimator comparison.
@@ -116,17 +136,17 @@ About 6.5 min for 16 cells at 10 seeds. Expect `rho(coverage, -d+)` near
 and the symmetric version indistinguishable from zero.
 
 ```bash
-python scripts/rotate_structures.py --features experiments/features19/rl_100.npz --seeds 10
+python scripts/rotate_structures.py --features experiments/features19/rl_photons_100_bg45.npz --seeds 10
 ```
 
 Rotates the held-out structure through all four. About 1.7 min per cache.
 
 ```bash
-python scripts/gate4_calibration.py --features experiments/features19/rl_100.npz
+python scripts/gate4_calibration.py --features experiments/features19/rl_photons_100_bg45.npz
 ```
 
 ```bash
-python scripts/gate4b_repair.py --features experiments/features19/rl_100.npz
+python scripts/gate4b_repair.py --features experiments/features19/rl_photons_100_bg45.npz
 ```
 
 Coverage under three shift axes against three calibration schemes, and the
@@ -158,7 +178,7 @@ representations. About 1.5 min. Expect simulated Poisson gain near 0.99 and real
 gain 1.08 to 1.29.
 
 ```bash
-python scripts/sim2real.py --cache experiments/features19/rl_100.npz --cells 6 --out experiments/sim2real/transfer.json
+python scripts/sim2real.py --cache experiments/features19/rl_photons_100_bg45.npz --cells 6 --out experiments/sim2real/transfer.json
 ```
 
 Applies a simulation-calibrated predictor to real measurements. About 3 min.
@@ -170,24 +190,30 @@ python scripts/real_calibration.py --levels 1 3 5 7 9 --out experiments/features
 ```
 
 About 40 min for 784 samples from 157 cells. Repeat with
-`--reconstructor tv`, and with `--reconstructor unet --checkpoint <path>` or
-`--reconstructor unrolled --checkpoint <path>` once step 7 has produced the
-weights. Four caches give a 16-cell grid comparable to the simulated one; a
-single cache gives only four cells, where no blind statistic is resolvable.
+`--reconstructor tv`, and with `--reconstructor unet --checkpoint
+experiments/gpu/unet_haze31.pt` or `--reconstructor unrolled --checkpoint
+experiments/gpu/unrolled_haze31.pt` (the shipped weights, or your own from
+step 7), writing `real_tv.npz`, `real_unet.npz` and `real_unrolled.npz`. Four
+caches give a 16-cell grid comparable to the simulated one; a single cache
+gives only four cells, where no blind statistic is resolvable.
 
 The output is written in the same layout `extract_features.py` produces, so the
 gate scripts above run on it unchanged:
 
 ```bash
-python scripts/gate5_bound.py --features experiments/features19/real_*.npz --seeds 10
+python scripts/gate5_bound.py --features experiments/features19/real_rl.npz experiments/features19/real_tv.npz experiments/features19/real_unet.npz experiments/features19/real_unrolled.npz --seeds 10
 ```
 
 ```bash
-python scripts/rotate_structures.py --features experiments/features19/real_rl.npz --seeds 10
+python scripts/real_coverage.py --seeds 10
 ```
 
-Expect in-distribution coverage **0.871 to 0.895** against nominal 0.900, and
-no blind statistic above **+0.25**.
+Expect the one-sided bound to hold 16/16 on every seed, no blind statistic
+above **+0.25** (Fig. 4b), and in-domain coverage of 0.950 (RL), 0.966 (TV),
+0.915 (U-Net) and 0.958 (unrolled) against nominal 0.900 under the paper's
+alpha-independent construction. (`gate4_calibration.py` refits a quantile model
+per alpha and gives 0.871 to 0.895 on the same caches; that older scheme is not
+the one the paper reports.)
 
 ## 7. The two learned reconstructors (GPU)
 
@@ -220,21 +246,21 @@ the old default of 8 the networks saw 832 patches while Richardson-Lucy ran its
 full 75 iterations, which rigs the comparison against them and makes the
 unrolled net visibly overfit.
 
-## 8. Figures
+## 8. Figures and tables
+
+The manuscript's figures and tables are built from the analysis outputs by the
+`paper/` scripts, which `reproduce.py` runs in order:
 
 ```bash
-python scripts/make_figures.py
+python paper/run_analyses.py --jobs 4
+python paper/make_figures.py
+python paper/make_tables.py
+python paper/check_claims.py
 ```
 
-Rebuilds all five figures in seconds from the cached results. Each panel is
-stamped with the commit and the sources behind it.
-
-Figures 6 and 7 cover the second dataset and the task-level result and are built
-separately, because they depend on steps 9-12 below:
-
-```bash
-python scripts/figure_w2s_task.py
-```
+`scripts/make_figures.py` and `scripts/figure_w2s_task.py` build the earlier
+exploratory figures (`figures/fig1_bound` ... `fig7_task_audit`) used while the
+work was in progress; they are not the published figures.
 
 ---
 

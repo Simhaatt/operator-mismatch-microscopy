@@ -1,0 +1,46 @@
+name: reproduce
+
+# Every push reruns the physics tests and regenerates every figure, table and
+# number of the paper from the shipped feature caches, then checks each
+# printed value against the regenerated one. A failure here means a claim in
+# the paper no longer follows from the code in this repository.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: requirements-lock.txt
+
+      - name: Install the locked environment (CPU-only torch)
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-lock.txt --extra-index-url https://download.pytorch.org/whl/cpu
+
+      - name: Physics and analysis tests
+        run: python -m pytest -q
+
+      - name: Regenerate all analyses, figures and tables, and check every claim
+        run: python reproduce.py --force --jobs 4
+
+      - name: Upload regenerated outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: paper-outputs
+          path: |
+            paper/figures/
+            paper/tables/
+            paper/results/

@@ -1,0 +1,10 @@
+REAL-MEASUREMENT IN-DOMAIN COVERAGE  nominal 0.900, 10 seeds
+
+  dataset  reconstructor    n_test  median 1-SSIM         coverage
+  BioSR    RL                  137          0.368     0.950 +- 0.017
+  BioSR    TV                  137          0.374     0.966 +- 0.010
+  BioSR    residual U-Net      137          0.358     0.915 +- 0.028
+  BioSR    unrolled            137          0.354     0.958 +- 0.013
+  W2S      RL                  288          0.593     0.891 +- 0.017
+
+  wrote paper/results/real_coverage.json

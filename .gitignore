@@ -20,7 +20,7 @@ figures/*
 *.pt
 *.ckpt
 
-# Handoff bundle: built from handoff/*.md, so the markdown is the source.
+# Handoff bundle: built from docs/history/handoff/*.md, so the markdown is the source.
 microscopy_handoff.zip
 
 # Copyrighted third-party paper: cite it, do not redistribute it.
@@ -44,3 +44,32 @@ ieee/supplementary_ieee.zip
 # states the expected value of every result.
 ieee/*
 !ieee/run_*.sh
+
+# --- Shipped derived data (must stay at the end: negations override the above)
+# The per-sample feature caches every paper number is computed from, the two
+# trained reconstructor checkpoints, and the two measured haze fractions.
+# ~14 MB in total; they contain features, errors and cell IDs, never images.
+# Checksums in experiments/SHA256SUMS; provenance in experiments/README.md.
+!experiments/README.md
+!experiments/SHA256SUMS
+!experiments/features19/
+experiments/features19/*
+!experiments/features19/rl_photons_100_bg45.npz
+!experiments/features19/rl_photons_15_bgprop.npz
+!experiments/features19/tv_photons_100_bg45.npz
+!experiments/features19/tv_photons_15_bgprop.npz
+!experiments/features19/real_rl.npz
+!experiments/features19/real_tv.npz
+!experiments/features19/real_unet.npz
+!experiments/features19/real_unrolled.npz
+!experiments/features19/real_w2s_rl.npz
+!experiments/features29/
+!experiments/features29/*.npz
+!experiments/features29_w2s/
+!experiments/features29_w2s/*.npz
+!experiments/gpu/
+!experiments/gpu/*
+!experiments/realism/
+experiments/realism/*
+!experiments/realism/haze_fraction.json
+!experiments/realism/w2s_haze.json

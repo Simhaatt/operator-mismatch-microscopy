@@ -1,0 +1,38 @@
+PHASE 2 -- tv, photons=100, 29 specs, alpha=0.1, 5 seeds
+
+1. Does the conclusion depend on the error metric?
+
+   shift axis                    coverage (1-SSIM)    coverage (rel l2)   n
+   none (in-distribution)           0.895+/-0.007        0.903+/-0.012    1015
+   operator shift (Zernike)         0.754+/-0.034        0.704+/-0.018    280
+   operator shift (physical)        0.909+/-0.017        0.925+/-0.012    420
+   content shift                    0.411+/-0.063        0.005+/-0.004    1566
+   combined                         0.006+/-0.002        0.002+/-0.002    432
+
+   largest coverage difference between metrics: 0.407
+   The two metrics are different functions of the reconstruction, so
+   exact agreement is not expected. What matters is whether the
+   ordering and the qualitative failure survive the swap.
+
+   Spearman rho(1-SSIM, rel l2) on the test split: +0.689
+
+2. Do the physically-motivated families behave like the Zernike ladder?
+
+   family        kind      rung       |mismatch|    error  cov(SSIM)  cov(l2)   n
+   defocus       zernike   extreme        0.9773   0.5889      0.629    0.543   35
+   astigmatism   zernike   extreme        0.8915   0.5300      0.800    0.886   35
+   coma          zernike   extreme        0.9674   0.5861      0.400    0.229   35
+   spherical     zernike   extreme        0.9250   0.5987      0.686    0.714   35
+   na            physical  p2             0.0742   0.1690      0.943    0.971   35
+   wavelength    physical  p2             0.0547   0.1845      0.914    0.971   35
+   focus_drift   physical  p4             0.6814   0.4217      0.914    0.886   35
+
+   Zernike  families: coverage 0.400-0.800, |mismatch| 0.8915-0.9773
+   physical families: coverage 0.914-0.943, |mismatch| 0.0547-0.6814
+
+   Read these together with the magnitude column. A physical family
+   that retains coverage while producing a much smaller kernel
+   perturbation has not disproved the mechanism -- it has placed
+   realistic parameter uncertainty lower on the same axis.
+
+  wrote paper/results/phase2_biosr_tv100.json

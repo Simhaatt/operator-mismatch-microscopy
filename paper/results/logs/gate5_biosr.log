@@ -1,0 +1,76 @@
+GATE 5 -- coverage bound  cov >= 1 - alpha - d_TV(score),  nominal 90%
+
+  config                 held out          cov   d_TV     d+  bound1s  slack1s  blind d+
+  rl_photons_100_bg45    CCPs            0.399  0.529  0.518    0.382   +0.017     0.969
+  rl_photons_100_bg45    ER              0.862  0.414  0.057    0.843   +0.019     0.299
+  rl_photons_100_bg45    F-actin         0.952  0.594  0.000    0.900   +0.052     0.023
+  rl_photons_100_bg45    Microtubules    0.892  0.243  0.018    0.882   +0.010     0.000
+
+  rl_photons_15_bgprop   CCPs            0.440  0.488  0.469    0.431   +0.009     0.963
+  rl_photons_15_bgprop   ER              0.886  0.411  0.038    0.862   +0.023     0.326
+  rl_photons_15_bgprop   F-actin         0.935  0.516  0.010    0.890   +0.045     0.001
+  rl_photons_15_bgprop   Microtubules    0.882  0.176  0.075    0.825   +0.057     0.000
+
+  tv_photons_100_bg45    CCPs            0.380  0.532  0.537    0.363   +0.017     0.977
+  tv_photons_100_bg45    ER              0.959  0.569  0.007    0.893   +0.066     0.252
+  tv_photons_100_bg45    F-actin         0.863  0.252  0.086    0.814   +0.049     0.088
+  tv_photons_100_bg45    Microtubules    0.811  0.223  0.227    0.673   +0.138     0.003
+
+  tv_photons_15_bgprop   CCPs            0.279  0.625  0.629    0.271   +0.008     0.978
+  tv_photons_15_bgprop   ER              0.965  0.661  0.004    0.896   +0.069     0.228
+  tv_photons_15_bgprop   F-actin         0.804  0.252  0.103    0.797   +0.007     0.028
+  tv_photons_15_bgprop   Microtubules    0.763  0.191  0.178    0.722   +0.040     0.001
+
+  cells: 16
+  symmetric bound holds 16/16, mean slack +0.272
+  one-sided bound holds 16/16, mean slack +0.039
+
+  Which quantity explains the spread in coverage?
+    rho(coverage, -d_TV)      = -0.126   symmetric
+    rho(coverage, -d+)        = +0.974   one-sided
+
+  Can it be anticipated WITHOUT labels?
+    rho(coverage, -blind d_TV) = +0.600
+    rho(coverage, -blind d+)   = +0.497
+    rho(d+, blind d+)          = +0.481
+
+  Which BLOCK of features makes the best blind estimator?
+  The labelled bound is tight; the blind proxy is what limits the
+  contribution, so this is the number that matters.
+
+    block      n_feat  cells   rho(cov,-blind d+)   rho(cov,-blind dTV)   rho(d+,blind d+)
+    all            19     16               +0.497                +0.600             +0.481
+    otf             5     16               +0.381                +0.582             +0.419
+    oscr           14     16               +0.340                +0.615             +0.343
+    otf_core        3     16               +0.572                +0.706             +0.510
+    residual        1     16               +0.041                -0.068             +0.015
+    qpred           0     16               +0.581                +0.391             +0.614
+    blind_score      0     16               +0.024                +0.047             +0.015
+
+    best blind block: 'qpred' at rho +0.581  (vs +0.497 for the full feature set)
+
+  The first says the bound is the right explanation; the second and third
+  say whether a practitioner could see the danger coming at deployment,
+  with no ground truth, which is the only version that is actually usable.
+
+  ACROSS 10 PARTITION SEEDS  (mean +- sd)
+  Every number above is one split. These are the same quantities
+  recomputed on independent cell-blocked partitions, which is the
+  only way to tell a finding from a lucky draw.
+
+    rho_cov_dplus          +0.952 +- 0.025   (n=10)
+    rho_cov_tv             -0.064 +- 0.090   (n=10)
+    holds_1s               16.0 +- 0.0 of 16
+    mean_slack_1s          +0.046 +- 0.006
+
+    blind_qpred            +0.616 +- 0.044
+    blind_all              +0.450 +- 0.065
+    blind_oscr             +0.375 +- 0.078
+    blind_otf_core         +0.366 +- 0.099
+    blind_otf              +0.276 +- 0.079
+    blind_blind_score      +0.101 +- 0.071
+    blind_residual         +0.083 +- 0.061
+
+    best 'qpred' leads 'all' by +0.166, pooled sd 0.079 -- clear of the seed noise
+
+  wrote paper/results/gate5_biosr.json

@@ -1,0 +1,60 @@
+GATE 5 -- coverage bound  cov >= 1 - alpha - d_TV(score),  nominal 90%
+
+  config                 held out          cov   d_TV     d+  bound1s  slack1s  blind d+
+  real_w2s_rl            ch0_488nm       0.811  0.258  0.103    0.797   +0.014     0.608
+  real_w2s_rl            ch1_561nm       0.912  0.165  0.076    0.824   +0.088     0.110
+  real_w2s_rl            ch2_640nm       0.919  0.229  0.010    0.890   +0.029     0.501
+
+  cells: 3
+  symmetric bound holds 3/3, mean slack +0.198
+  one-sided bound holds 3/3, mean slack +0.044
+
+  Which quantity explains the spread in coverage?
+    rho(coverage, -d_TV)      = +0.500   symmetric
+    rho(coverage, -d+)        = +1.000   one-sided
+
+  Can it be anticipated WITHOUT labels?
+    rho(coverage, -blind d_TV) = +0.500
+    rho(coverage, -blind d+)   = +0.500
+    rho(d+, blind d+)          = +0.500
+
+  Which BLOCK of features makes the best blind estimator?
+  The labelled bound is tight; the blind proxy is what limits the
+  contribution, so this is the number that matters.
+
+    block      n_feat  cells   rho(cov,-blind d+)   rho(cov,-blind dTV)   rho(d+,blind d+)
+    all            19      3               +0.500                +0.500             +0.500
+    otf             5      3               -0.500                -1.000             -0.500
+    oscr           14      3               -0.500                +0.500             -0.500
+    otf_core        3      3               -0.500                -0.500             -0.500
+    residual        1      3               -1.000                +1.000             -1.000
+    qpred           0      3               +0.500                +0.500             +0.500
+    blind_score      0      3               +0.500                +1.000             +0.500
+
+    best blind block: 'all' at rho +0.500
+
+  The first says the bound is the right explanation; the second and third
+  say whether a practitioner could see the danger coming at deployment,
+  with no ground truth, which is the only version that is actually usable.
+
+  ACROSS 10 PARTITION SEEDS  (mean +- sd)
+  Every number above is one split. These are the same quantities
+  recomputed on independent cell-blocked partitions, which is the
+  only way to tell a finding from a lucky draw.
+
+    rho_cov_dplus          +0.600 +- 0.436   (n=10)
+    rho_cov_tv             +0.800 +- 0.245   (n=10)
+    holds_1s               3.0 +- 0.0 of 3
+    mean_slack_1s          +0.050 +- 0.013
+
+    blind_all              +0.750 +- 0.250
+    blind_blind_score      +0.700 +- 0.245
+    blind_residual         +0.550 +- 0.568
+    blind_qpred            +0.537 +- 0.403
+    blind_oscr             +0.450 +- 0.350
+    blind_otf              +0.400 +- 0.624
+    blind_otf_core         +0.400 +- 0.624
+
+    best 'all' leads 'blind_score' by +0.050, pooled sd 0.350 -- NOT separated from seed noise
+
+  wrote paper/results/gate5_w2s_real.json

@@ -1,0 +1,17 @@
+FEATURE ABLATION AT MATCHED COVERAGE -- photons=15, alpha=0.1, 5 seeds
+
+  In-distribution coverage is matched by conformal construction, so
+  the bound width is the comparison. Narrower is better.
+
+  block          k         cov_in        width_in         cov_op        width_op
+  all           19    0.885+/-0.006    0.4738+/-0.0035    0.734+/-0.023    0.6082+/-0.0052
+  oscr          14    0.875+/-0.015    0.4742+/-0.0074    0.754+/-0.032    0.6126+/-0.0078
+  otf_core       3    0.908+/-0.007    0.5566+/-0.0062    0.673+/-0.022    0.6123+/-0.0083
+  otf            5    0.916+/-0.005    0.5579+/-0.0036    0.659+/-0.024    0.6054+/-0.0090
+  residual       1    0.911+/-0.008    0.6230+/-0.0054    0.178+/-0.013    0.4457+/-0.0066
+
+  narrowest: 'all' (19 features)
+  widest:    'residual' (1 features)
+  'all' is 24.0% narrower than 'residual' at matched coverage
+
+  wrote paper/results/ablation_rl15.json
